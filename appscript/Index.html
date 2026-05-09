@@ -19,13 +19,20 @@
       margin: 0 auto;
       background: #fff;
       border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       padding: 32px;
     }
 
     h1 {
       margin: 0 0 24px;
       font-size: 1.5rem;
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: 1.1rem;
       font-weight: 600;
       color: #1a1a1a;
     }
@@ -42,7 +49,8 @@
       color: #444;
     }
 
-    input[type="text"] {
+    input[type="text"],
+    textarea {
       width: 100%;
       padding: 10px 12px;
       font-size: 0.95rem;
@@ -50,10 +58,17 @@
       border-radius: 4px;
       outline: none;
       box-sizing: border-box;
+      font-family: inherit;
     }
 
-    input[type="text"]:focus {
+    input[type="text"]:focus,
+    textarea:focus {
       border-color: #1d9bf0;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
     }
 
     .radio-group {
@@ -72,16 +87,12 @@
       color: #444;
     }
 
-    input[type="radio"] {
-      cursor: pointer;
-    }
-
     #cronGroup {
       display: none;
       margin-top: 16px;
     }
 
-    button[type="submit"] {
+    .btn {
       width: 100%;
       padding: 11px;
       font-size: 1rem;
@@ -93,13 +104,24 @@
       cursor: pointer;
     }
 
-    button[type="submit"]:hover {
+    .btn:hover {
       background: #1a8cd8;
     }
 
-    button[type="submit"]:disabled {
+    .btn:disabled {
       background: #93c9f5;
       cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #fff;
+      color: #1d9bf0;
+      border: 1px solid #1d9bf0;
+      margin-bottom: 12px;
+    }
+
+    .btn-secondary:hover {
+      background: #e8f5fe;
     }
 
     #loading {
@@ -129,14 +151,54 @@
       background: #ffebee;
       border: 1px solid #c62828;
     }
+
+    /* Preview panel */
+    #previewPanel {
+      display: none;
+    }
+
+    .media-preview {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .media-preview img {
+      width: 120px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 4px;
+      border: 1px solid #eee;
+    }
+
+    .media-url-list {
+      font-size: 0.8rem;
+      color: #666;
+      word-break: break-all;
+      margin-top: 4px;
+    }
+
+    .media-url-list a {
+      color: #1d9bf0;
+      text-decoration: none;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #eee;
+      margin: 24px 0;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Tweet Scheduler</h1>
 
-    <form id="tweetForm">
-
+    <!-- Step 1: Fetch form -->
+    <div id="fetchPanel">
       <div class="form-group">
         <label for="tweetLink">Tweet Link</label>
         <input
@@ -173,41 +235,64 @@
         >
       </div>
 
-      <button type="submit" id="submitBtn">Submit</button>
+      <button type="button" id="fetchBtn" class="btn">Fetch Tweet</button>
+    </div>
 
-    </form>
+    <div id="loading">Fetching tweet...</div>
 
-    <div id="loading">Processing...</div>
+    <!-- Step 2: Preview + edit + submit -->
+    <div id="previewPanel">
+      <hr class="divider">
+      <h2>Tweet Preview</h2>
+
+      <div class="form-group">
+        <label for="editTitle">Tweet Text (editable)</label>
+        <textarea id="editTitle" rows="4"></textarea>
+      </div>
+
+      <div class="form-group" id="mediaSection">
+        <label>Media</label>
+        <div id="mediaPreview" class="media-preview"></div>
+        <div id="mediaUrls" class="media-url-list"></div>
+      </div>
+
+      <button type="button" id="backBtn" class="btn btn-secondary">Back</button>
+      <button type="button" id="submitBtn" class="btn">Post Tweet</button>
+    </div>
 
     <div id="feedback"></div>
   </div>
 
   <script>
     (function () {
-      var form       = document.getElementById('tweetForm');
-      var cronGroup  = document.getElementById('cronGroup');
-      var submitBtn  = document.getElementById('submitBtn');
-      var loading    = document.getElementById('loading');
-      var feedback   = document.getElementById('feedback');
-      var radios     = document.querySelectorAll('input[name="scheduleMode"]');
+      var fetchPanel   = document.getElementById('fetchPanel');
+      var previewPanel = document.getElementById('previewPanel');
+      var loading      = document.getElementById('loading');
+      var feedback     = document.getElementById('feedback');
+      var fetchBtn     = document.getElementById('fetchBtn');
+      var submitBtn    = document.getElementById('submitBtn');
+      var backBtn      = document.getElementById('backBtn');
+      var cronGroup    = document.getElementById('cronGroup');
+      var radios       = document.querySelectorAll('input[name="scheduleMode"]');
 
-      // Toggle cron field visibility
+      // Stored fetch result
+      var fetchedMediaUrls = [];
+
+      // Toggle cron field
       for (var i = 0; i < radios.length; i++) {
         radios[i].addEventListener('change', function () {
           cronGroup.style.display = (this.value === 'cron') ? 'block' : 'none';
         });
       }
 
-      function showLoading() {
-        submitBtn.disabled = true;
+      function showLoading(msg) {
+        loading.textContent = msg || 'Loading...';
         loading.style.display = 'block';
         feedback.style.display = 'none';
         feedback.className = '';
-        feedback.textContent = '';
       }
 
       function hideLoading() {
-        submitBtn.disabled = false;
         loading.style.display = 'none';
       }
 
@@ -217,48 +302,135 @@
         feedback.style.display = 'block';
       }
 
-      function resetForm() {
-        document.getElementById('tweetLink').value = '';
-        for (var i = 0; i < radios.length; i++) {
-          radios[i].checked = (radios[i].value === 'now');
+      function getScheduleMode() {
+        var checked = document.querySelector('input[name="scheduleMode"]:checked');
+        return checked ? checked.value : 'now';
+      }
+
+      // --- Step 1: Fetch ---
+      fetchBtn.addEventListener('click', function () {
+        var tweetLink = document.getElementById('tweetLink').value.trim();
+        if (!tweetLink) {
+          showFeedback('Tweet link is required.', 'error');
+          return;
         }
-        cronGroup.style.display = 'none';
-      }
 
-      function onSuccess(result) {
-        hideLoading();
-        if (result.success) {
-          showFeedback(result.message, 'success');
-          resetForm();
-        } else {
-          showFeedback(result.error, 'error');
+        fetchBtn.disabled = true;
+        showLoading('Fetching tweet...');
+
+        google.script.run
+          .withSuccessHandler(function (result) {
+            hideLoading();
+            fetchBtn.disabled = false;
+
+            if (!result.success) {
+              showFeedback(result.error, 'error');
+              return;
+            }
+
+            // Populate preview
+            document.getElementById('editTitle').value = result.text || '';
+            fetchedMediaUrls = result.mediaUrls || [];
+
+            // Show media previews
+            var mediaPreview = document.getElementById('mediaPreview');
+            var mediaUrlsDiv = document.getElementById('mediaUrls');
+            mediaPreview.innerHTML = '';
+            mediaUrlsDiv.innerHTML = '';
+
+            if (fetchedMediaUrls.length > 0) {
+              for (var i = 0; i < fetchedMediaUrls.length; i++) {
+                var img = document.createElement('img');
+                img.src = fetchedMediaUrls[i];
+                img.alt = 'media';
+                mediaPreview.appendChild(img);
+
+                var a = document.createElement('a');
+                a.href = fetchedMediaUrls[i];
+                a.target = '_blank';
+                a.textContent = fetchedMediaUrls[i];
+                mediaUrlsDiv.appendChild(a);
+              }
+              document.getElementById('mediaSection').style.display = 'block';
+            } else {
+              document.getElementById('mediaSection').style.display = 'none';
+            }
+
+            // Switch to preview panel
+            fetchPanel.style.display = 'none';
+            previewPanel.style.display = 'block';
+            feedback.style.display = 'none';
+          })
+          .withFailureHandler(function (err) {
+            hideLoading();
+            fetchBtn.disabled = false;
+            showFeedback(err.message, 'error');
+          })
+          .fetchTweetPreview(tweetLink);
+      });
+
+      // --- Back button ---
+      backBtn.addEventListener('click', function () {
+        previewPanel.style.display = 'none';
+        fetchPanel.style.display = 'block';
+        feedback.style.display = 'none';
+      });
+
+      // --- Step 2: Submit ---
+      submitBtn.addEventListener('click', function () {
+        var tweetLink      = document.getElementById('tweetLink').value.trim();
+        var scheduleMode   = getScheduleMode();
+        var cronExpression = document.getElementById('cronExpression').value.trim();
+        var title          = document.getElementById('editTitle').value.trim();
+        var resourceLinks  = fetchedMediaUrls.join(',');
+
+        if (!title) {
+          showFeedback('Tweet text is required.', 'error');
+          return;
         }
-      }
 
-      function onFailure(err) {
-        hideLoading();
-        showFeedback(err.message, 'error');
-      }
+        if (scheduleMode === 'cron' && !cronExpression) {
+          showFeedback('Cron expression is required.', 'error');
+          return;
+        }
 
-      form.addEventListener('submit', function (e) {
-        e.preventDefault();
-
-        var tweetLink      = document.getElementById('tweetLink').value;
-        var checkedRadio   = document.querySelector('input[name="scheduleMode"]:checked');
-        var scheduleMode   = checkedRadio ? checkedRadio.value : 'now';
-        var cronExpression = document.getElementById('cronExpression').value;
+        submitBtn.disabled = true;
+        showLoading(scheduleMode === 'now' ? 'Posting tweet...' : 'Scheduling tweet...');
 
         var params = {
           tweetLink:      tweetLink,
           scheduleMode:   scheduleMode,
-          cronExpression: cronExpression
+          cronExpression: cronExpression,
+          title:          title,
+          resourceLinks:  resourceLinks
         };
 
-        showLoading();
-
         google.script.run
-          .withSuccessHandler(onSuccess)
-          .withFailureHandler(onFailure)
+          .withSuccessHandler(function (result) {
+            hideLoading();
+            submitBtn.disabled = false;
+
+            if (result.success) {
+              showFeedback(result.message, 'success');
+              // Reset to step 1
+              previewPanel.style.display = 'none';
+              fetchPanel.style.display = 'block';
+              document.getElementById('tweetLink').value = '';
+              document.getElementById('cronExpression').value = '';
+              for (var i = 0; i < radios.length; i++) {
+                radios[i].checked = (radios[i].value === 'now');
+              }
+              cronGroup.style.display = 'none';
+              fetchedMediaUrls = [];
+            } else {
+              showFeedback(result.error, 'error');
+            }
+          })
+          .withFailureHandler(function (err) {
+            hideLoading();
+            submitBtn.disabled = false;
+            showFeedback(err.message, 'error');
+          })
           .handleFormSubmit(params);
       });
     }());

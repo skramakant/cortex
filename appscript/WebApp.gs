@@ -59,10 +59,44 @@ function _getNewRowIndex(sheet) {
 }
 
 /**
- * Main form submission handler. Validates inputs, writes a new row to the
- * tweet sheet, and (for "Send Now") immediately extracts and posts the tweet.
+ * Fetches tweet data for preview without writing to the sheet.
+ * Called from the client before the user confirms submission.
  *
- * @param {{ tweetLink: string, scheduleMode: string, cronExpression?: string }} params
+ * @param {string} tweetUrl
+ * @returns {{ success: boolean, text?: string, mediaUrls?: string[], error?: string }}
+ */
+function fetchTweetPreview(tweetUrl) {
+  try {
+    var linkError = _validateTweetLink(tweetUrl);
+    if (linkError) {
+      return { success: false, error: linkError };
+    }
+
+    var tweetId = extractTweetId(tweetUrl);
+    if (!tweetId) {
+      return { success: false, error: 'Could not extract tweet ID from URL.' };
+    }
+
+    var result = fetchTweetData(tweetId);
+    if (result.error) {
+      return { success: false, error: result.error };
+    }
+
+    return {
+      success:   true,
+      text:      result.text,
+      mediaUrls: result.mediaUrls
+    };
+  } catch (e) {
+    return { success: false, error: 'Unexpected error: ' + e.message };
+  }
+}
+
+/**
+ * Main form submission handler. Validates inputs, writes a new row to the
+ * tweet sheet, and (for "Send Now") posts using the user-edited title.
+ *
+ * @param {{ tweetLink: string, scheduleMode: string, title: string, resourceLinks: string, cronExpression?: string }} params
  * @returns {{ success: boolean, message?: string, error?: string }}
  */
 function handleFormSubmit(params) {
@@ -70,11 +104,18 @@ function handleFormSubmit(params) {
     var tweetLink      = params.tweetLink;
     var scheduleMode   = params.scheduleMode;
     var cronExpression = params.cronExpression;
+    var title          = params.title || '';
+    var resourceLinks  = params.resourceLinks || '';
 
     // --- Validate tweet link ---
     var linkError = _validateTweetLink(tweetLink);
     if (linkError) {
       return { success: false, error: linkError };
+    }
+
+    // --- Validate title ---
+    if (!title || !title.trim()) {
+      return { success: false, error: 'Tweet text is required.' };
     }
 
     // --- Validate cron expression (only in cron mode) ---
@@ -96,9 +137,9 @@ function handleFormSubmit(params) {
     var rowIndex = _getNewRowIndex(sheet);
 
     writeCell(sheet, rowIndex, COL_TWEET_LINK,     tweetLink);
-    writeCell(sheet, rowIndex, COL_RESOURCE_LINKS, '');
+    writeCell(sheet, rowIndex, COL_RESOURCE_LINKS, resourceLinks);
     writeCell(sheet, rowIndex, COL_STATUS,         '');
-    writeCell(sheet, rowIndex, COL_TITLE,          '');
+    writeCell(sheet, rowIndex, COL_TITLE,          title);
 
     if (scheduleMode === 'now') {
       writeCell(sheet, rowIndex, COL_CRON, '');
@@ -106,18 +147,8 @@ function handleFormSubmit(params) {
       writeCell(sheet, rowIndex, COL_CRON, cronExpression);
     }
 
-    // --- Send Now: extract then post ---
+    // --- Send Now: post using the user-edited title ---
     if (scheduleMode === 'now') {
-      processExtractionRow(sheet, rowIndex, tweetLink);
-
-      var colBValue = sheet.getRange(rowIndex, COL_RESOURCE_LINKS).getValue();
-      if (String(colBValue).indexOf('error:') === 0) {
-        return { success: false, error: colBValue };
-      }
-
-      var title         = sheet.getRange(rowIndex, COL_TITLE).getValue();
-      var resourceLinks = sheet.getRange(rowIndex, COL_RESOURCE_LINKS).getValue();
-
       postTweetForRow(sheet, rowIndex, title, resourceLinks);
 
       var colCValue = sheet.getRange(rowIndex, COL_STATUS).getValue();
