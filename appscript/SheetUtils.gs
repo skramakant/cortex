@@ -12,12 +12,14 @@ function getOrCreateTweetSheet() {
   var sheet = ss.getSheetByName('tweet');
   if (!sheet) {
     sheet = ss.insertSheet('tweet');
-    sheet.getRange(1, 1, 1, 5).setValues([[
+    sheet.getRange(1, 1, 1, 7).setValues([[
       'tweet link',
       'resource links',
       'status',
       'title',
-      'cron expression'
+      'cron expression',
+      'max count',
+      'post count'
     ]]);
   }
   return sheet;
@@ -33,7 +35,7 @@ function getAllRows(sheet) {
   if (lastRow < 2) {
     return [];
   }
-  return sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+  return sheet.getRange(2, 1, lastRow - 1, 7).getValues();
 }
 
 /**

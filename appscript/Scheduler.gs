@@ -30,9 +30,27 @@ function runScheduler() {
     }
 
     if (matchesCronSchedule(parsed, now)) {
-      var title = row[COL_TITLE - 1];
+      var title         = row[COL_TITLE - 1];
       var resourceLinks = row[COL_RESOURCE_LINKS - 1];
+      var maxCount      = parseInt(row[COL_MAX_COUNT - 1], 10) || 0;
+      var postCount     = parseInt(row[COL_POST_COUNT - 1], 10) || 0;
+
+      // Skip if max count reached (0 means unlimited)
+      if (maxCount > 0 && postCount >= maxCount) {
+        writeCell(sheet, rowIndex, COL_STATUS, 'sent');
+        continue;
+      }
+
       postTweetForRow(sheet, rowIndex, title, resourceLinks);
+
+      // Increment post count after successful post
+      var newPostCount = postCount + 1;
+      writeCell(sheet, rowIndex, COL_POST_COUNT, newPostCount);
+
+      // Mark as sent if max count reached
+      if (maxCount > 0 && newPostCount >= maxCount) {
+        writeCell(sheet, rowIndex, COL_STATUS, 'sent');
+      }
     }
   }
 }

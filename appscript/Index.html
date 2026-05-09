@@ -15,12 +15,8 @@
     }
 
     .container {
-      max-width: 600px;
+      max-width: 900px;
       margin: 0 auto;
-      background: #fff;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      padding: 32px;
     }
 
     h1 {
@@ -30,21 +26,64 @@
       color: #1a1a1a;
     }
 
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 0;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      background: #e8e8e8;
+      border: 1px solid #ccc;
+      border-bottom: none;
+      cursor: pointer;
+      color: #666;
+      border-radius: 6px 6px 0 0;
+    }
+
+    .tab-btn:first-child {
+      border-right: none;
+    }
+
+    .tab-btn.active {
+      background: #fff;
+      color: #1d9bf0;
+      border-color: #ccc;
+    }
+
+    .tab-content {
+      display: none;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 0 0 8px 8px;
+      padding: 28px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
     h2 {
       margin: 0 0 16px;
-      font-size: 1.1rem;
+      font-size: 1.05rem;
       font-weight: 600;
       color: #1a1a1a;
     }
 
     .form-group {
-      margin-bottom: 20px;
+      margin-bottom: 18px;
     }
 
     label {
       display: block;
       margin-bottom: 6px;
-      font-size: 0.9rem;
+      font-size: 0.88rem;
       font-weight: 500;
       color: #444;
     }
@@ -53,7 +92,7 @@
     textarea {
       width: 100%;
       padding: 10px 12px;
-      font-size: 0.95rem;
+      font-size: 0.93rem;
       border: 1px solid #ccc;
       border-radius: 4px;
       outline: none;
@@ -68,12 +107,12 @@
 
     textarea {
       resize: vertical;
-      min-height: 80px;
+      min-height: 90px;
     }
 
     .radio-group {
       display: flex;
-      gap: 24px;
+      gap: 20px;
       margin-top: 4px;
     }
 
@@ -83,97 +122,94 @@
       gap: 6px;
       font-weight: 400;
       cursor: pointer;
-      font-size: 0.9rem;
+      font-size: 0.88rem;
       color: #444;
     }
 
-    #cronGroup {
+    .cron-group {
       display: none;
-      margin-top: 16px;
+      margin-top: 14px;
     }
 
     .btn {
       width: 100%;
       padding: 11px;
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: 600;
       color: #fff;
       background: #1d9bf0;
       border: none;
       border-radius: 4px;
       cursor: pointer;
+      margin-top: 4px;
     }
 
-    .btn:hover {
-      background: #1a8cd8;
-    }
-
-    .btn:disabled {
-      background: #93c9f5;
-      cursor: not-allowed;
-    }
+    .btn:hover { background: #1a8cd8; }
+    .btn:disabled { background: #93c9f5; cursor: not-allowed; }
 
     .btn-secondary {
       background: #fff;
       color: #1d9bf0;
       border: 1px solid #1d9bf0;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
 
-    .btn-secondary:hover {
-      background: #e8f5fe;
-    }
+    .btn-secondary:hover { background: #e8f5fe; }
 
-    #loading {
+    .loading {
       display: none;
       text-align: center;
-      margin-top: 16px;
-      font-size: 0.9rem;
+      margin-top: 14px;
+      font-size: 0.88rem;
       color: #666;
     }
 
-    #feedback {
+    .feedback {
       display: none;
-      margin-top: 20px;
-      padding: 10px;
+      margin-top: 16px;
+      padding: 10px 12px;
       border-radius: 4px;
-      font-size: 0.9rem;
+      font-size: 0.88rem;
     }
 
-    #feedback.success {
+    .feedback.success {
       color: #2e7d32;
       background: #e8f5e9;
       border: 1px solid #2e7d32;
     }
 
-    #feedback.error {
+    .feedback.error {
       color: #c62828;
       background: #ffebee;
       border: 1px solid #c62828;
     }
 
-    /* Preview panel */
-    #previewPanel {
-      display: none;
+    /* Preview panel inside clone tab */
+    .preview-panel { display: none; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #eee;
+      margin: 20px 0;
     }
 
     .media-preview {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-top: 8px;
+      margin-top: 6px;
     }
 
     .media-preview img {
-      width: 120px;
-      height: 80px;
+      width: 110px;
+      height: 74px;
       object-fit: cover;
       border-radius: 4px;
       border: 1px solid #eee;
     }
 
     .media-url-list {
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       color: #666;
       word-break: break-all;
       margin-top: 4px;
@@ -186,155 +222,211 @@
       margin-bottom: 2px;
     }
 
-    .divider {
-      border: none;
-      border-top: 1px solid #eee;
-      margin: 24px 0;
+    .char-count {
+      font-size: 0.78rem;
+      color: #888;
+      text-align: right;
+      margin-top: 3px;
     }
+
+    .char-count.over { color: #c62828; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Tweet Scheduler</h1>
 
-    <!-- Step 1: Fetch form -->
-    <div id="fetchPanel">
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" id="tabCloneBtn" onclick="switchTab('clone')">Clone Tweet</button>
+      <button class="tab-btn" id="tabNewBtn" onclick="switchTab('new')">New Tweet</button>
+    </div>
+
+    <!-- ===== CLONE TWEET TAB ===== -->
+    <div class="tab-content active" id="tabClone">
+
+      <!-- Step 1: Fetch -->
+      <div id="cloneFetchPanel">
+        <div class="form-group">
+          <label for="cloneTweetLink">Tweet Link</label>
+          <input type="text" id="cloneTweetLink" placeholder="https://x.com/user/status/..." autocomplete="off">
+        </div>
+
+        <div class="form-group">
+          <label>Schedule Mode</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="cloneSchedule" value="now" checked> Send Now
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="cloneSchedule" value="cron"> Schedule with Cron
+            </label>
+          </div>
+        </div>
+
+        <div class="cron-group" id="cloneCronGroup">
+          <label for="cloneCron">Cron Expression</label>
+          <input type="text" id="cloneCron" placeholder="e.g. 0 9 * * 1" autocomplete="off">
+          <div style="margin-top:12px;">
+            <label for="cloneMaxCount">Max Posts (0 = unlimited)</label>
+            <input type="text" id="cloneMaxCount" placeholder="e.g. 5" autocomplete="off" style="width:120px;">
+          </div>
+        </div>
+
+        <button class="btn" id="cloneFetchBtn">Fetch Tweet</button>
+      </div>
+
+      <div class="loading" id="cloneLoading">Fetching tweet...</div>
+
+      <!-- Step 2: Preview + edit -->
+      <div class="preview-panel" id="clonePreviewPanel">
+        <hr class="divider">
+        <h2>Tweet Preview</h2>
+
+        <div class="form-group">
+          <label for="cloneEditTitle">Tweet Text (editable)</label>
+          <textarea id="cloneEditTitle" rows="4" oninput="updateCharCount('cloneEditTitle','cloneCharCount')"></textarea>
+          <div class="char-count" id="cloneCharCount">0 / 280</div>
+        </div>
+
+        <div class="form-group" id="cloneMediaSection">
+          <label>Media</label>
+          <div class="media-preview" id="cloneMediaPreview"></div>
+          <div class="media-url-list" id="cloneMediaUrls"></div>
+        </div>
+
+        <button class="btn btn-secondary" id="cloneBackBtn">Back</button>
+        <button class="btn" id="cloneSubmitBtn">Post Tweet</button>
+      </div>
+
+      <div class="feedback" id="cloneFeedback"></div>
+    </div>
+
+    <!-- ===== NEW TWEET TAB ===== -->
+    <div class="tab-content" id="tabNew">
+
       <div class="form-group">
-        <label for="tweetLink">Tweet Link</label>
-        <input
-          type="text"
-          id="tweetLink"
-          name="tweetLink"
-          placeholder="https://x.com/user/status/..."
-          autocomplete="off"
-        >
+        <label for="newTitle">Tweet Text</label>
+        <textarea id="newTitle" rows="4" placeholder="What's happening?" oninput="updateCharCount('newTitle','newCharCount')"></textarea>
+        <div class="char-count" id="newCharCount">0 / 280</div>
+      </div>
+
+      <div class="form-group">
+        <label for="newResourceLink">Resource Link (optional — image or video URL)</label>
+        <input type="text" id="newResourceLink" placeholder="https://example.com/image.jpg" autocomplete="off">
       </div>
 
       <div class="form-group">
         <label>Schedule Mode</label>
         <div class="radio-group">
           <label class="radio-label">
-            <input type="radio" name="scheduleMode" value="now" checked>
-            Send Now
+            <input type="radio" name="newSchedule" value="now" checked> Send Now
           </label>
           <label class="radio-label">
-            <input type="radio" name="scheduleMode" value="cron">
-            Schedule with Cron Expression
+            <input type="radio" name="newSchedule" value="cron"> Schedule with Cron
           </label>
         </div>
       </div>
 
-      <div id="cronGroup" class="form-group">
-        <label for="cronExpression">Cron Expression</label>
-        <input
-          type="text"
-          id="cronExpression"
-          name="cronExpression"
-          placeholder="e.g. 0 9 * * 1"
-          autocomplete="off"
-        >
+      <div class="cron-group" id="newCronGroup">
+        <label for="newCron">Cron Expression</label>
+        <input type="text" id="newCron" placeholder="e.g. 0 9 * * 1" autocomplete="off">
+        <div style="margin-top:12px;">
+          <label for="newMaxCount">Max Posts (0 = unlimited)</label>
+          <input type="text" id="newMaxCount" placeholder="e.g. 5" autocomplete="off" style="width:120px;">
+        </div>
       </div>
 
-      <button type="button" id="fetchBtn" class="btn">Fetch Tweet</button>
+      <button class="btn" id="newSubmitBtn">Post Tweet</button>
+
+      <div class="loading" id="newLoading">Posting tweet...</div>
+      <div class="feedback" id="newFeedback"></div>
     </div>
-
-    <div id="loading">Fetching tweet...</div>
-
-    <!-- Step 2: Preview + edit + submit -->
-    <div id="previewPanel">
-      <hr class="divider">
-      <h2>Tweet Preview</h2>
-
-      <div class="form-group">
-        <label for="editTitle">Tweet Text (editable)</label>
-        <textarea id="editTitle" rows="4"></textarea>
-      </div>
-
-      <div class="form-group" id="mediaSection">
-        <label>Media</label>
-        <div id="mediaPreview" class="media-preview"></div>
-        <div id="mediaUrls" class="media-url-list"></div>
-      </div>
-
-      <button type="button" id="backBtn" class="btn btn-secondary">Back</button>
-      <button type="button" id="submitBtn" class="btn">Post Tweet</button>
-    </div>
-
-    <div id="feedback"></div>
   </div>
 
   <script>
-    (function () {
-      var fetchPanel   = document.getElementById('fetchPanel');
-      var previewPanel = document.getElementById('previewPanel');
-      var loading      = document.getElementById('loading');
-      var feedback     = document.getElementById('feedback');
-      var fetchBtn     = document.getElementById('fetchBtn');
-      var submitBtn    = document.getElementById('submitBtn');
-      var backBtn      = document.getElementById('backBtn');
-      var cronGroup    = document.getElementById('cronGroup');
-      var radios       = document.querySelectorAll('input[name="scheduleMode"]');
+    // ---- Tab switching ----
+    function switchTab(tab) {
+      document.getElementById('tabClone').classList.toggle('active', tab === 'clone');
+      document.getElementById('tabNew').classList.toggle('active', tab === 'new');
+      document.getElementById('tabCloneBtn').classList.toggle('active', tab === 'clone');
+      document.getElementById('tabNewBtn').classList.toggle('active', tab === 'new');
+    }
 
-      // Stored fetch result
+    // ---- Character counter ----
+    function updateCharCount(textareaId, counterId) {
+      var ta = document.getElementById(textareaId);
+      var counter = document.getElementById(counterId);
+      var len = ta.value.length;
+      counter.textContent = len + ' / 280';
+      counter.className = 'char-count' + (len > 280 ? ' over' : '');
+    }
+
+    // ---- Helpers ----
+    function getRadioValue(name) {
+      var checked = document.querySelector('input[name="' + name + '"]:checked');
+      return checked ? checked.value : 'now';
+    }
+
+    function showFeedback(id, message, type) {
+      var el = document.getElementById(id);
+      el.textContent = message;
+      el.className = 'feedback ' + type;
+      el.style.display = 'block';
+    }
+
+    function hideFeedback(id) {
+      var el = document.getElementById(id);
+      el.style.display = 'none';
+    }
+
+    function showLoading(id, msg) {
+      var el = document.getElementById(id);
+      el.textContent = msg || 'Loading...';
+      el.style.display = 'block';
+    }
+
+    function hideLoading(id) {
+      document.getElementById(id).style.display = 'none';
+    }
+
+    // ====================================================
+    // CLONE TWEET TAB
+    // ====================================================
+    (function () {
       var fetchedMediaUrls = [];
 
       // Toggle cron field
-      for (var i = 0; i < radios.length; i++) {
-        radios[i].addEventListener('change', function () {
-          cronGroup.style.display = (this.value === 'cron') ? 'block' : 'none';
+      var cloneRadios = document.querySelectorAll('input[name="cloneSchedule"]');
+      for (var i = 0; i < cloneRadios.length; i++) {
+        cloneRadios[i].addEventListener('change', function () {
+          document.getElementById('cloneCronGroup').style.display =
+            (this.value === 'cron') ? 'block' : 'none';
         });
       }
 
-      function showLoading(msg) {
-        loading.textContent = msg || 'Loading...';
-        loading.style.display = 'block';
-        feedback.style.display = 'none';
-        feedback.className = '';
-      }
+      // Fetch button
+      document.getElementById('cloneFetchBtn').addEventListener('click', function () {
+        var tweetLink = document.getElementById('cloneTweetLink').value.trim();
+        if (!tweetLink) { showFeedback('cloneFeedback', 'Tweet link is required.', 'error'); return; }
 
-      function hideLoading() {
-        loading.style.display = 'none';
-      }
+        this.disabled = true;
+        hideFeedback('cloneFeedback');
+        showLoading('cloneLoading', 'Fetching tweet...');
 
-      function showFeedback(message, type) {
-        feedback.textContent = message;
-        feedback.className = type;
-        feedback.style.display = 'block';
-      }
-
-      function getScheduleMode() {
-        var checked = document.querySelector('input[name="scheduleMode"]:checked');
-        return checked ? checked.value : 'now';
-      }
-
-      // --- Step 1: Fetch ---
-      fetchBtn.addEventListener('click', function () {
-        var tweetLink = document.getElementById('tweetLink').value.trim();
-        if (!tweetLink) {
-          showFeedback('Tweet link is required.', 'error');
-          return;
-        }
-
-        fetchBtn.disabled = true;
-        showLoading('Fetching tweet...');
-
+        var btn = this;
         google.script.run
           .withSuccessHandler(function (result) {
-            hideLoading();
-            fetchBtn.disabled = false;
+            hideLoading('cloneLoading');
+            btn.disabled = false;
+            if (!result.success) { showFeedback('cloneFeedback', result.error, 'error'); return; }
 
-            if (!result.success) {
-              showFeedback(result.error, 'error');
-              return;
-            }
-
-            // Populate preview
-            document.getElementById('editTitle').value = result.text || '';
+            document.getElementById('cloneEditTitle').value = result.text || '';
+            updateCharCount('cloneEditTitle', 'cloneCharCount');
             fetchedMediaUrls = result.mediaUrls || [];
 
-            // Show media previews
-            var mediaPreview = document.getElementById('mediaPreview');
-            var mediaUrlsDiv = document.getElementById('mediaUrls');
+            var mediaPreview = document.getElementById('cloneMediaPreview');
+            var mediaUrlsDiv = document.getElementById('cloneMediaUrls');
             mediaPreview.innerHTML = '';
             mediaUrlsDiv.innerHTML = '';
 
@@ -344,94 +436,153 @@
                 img.src = fetchedMediaUrls[i];
                 img.alt = 'media';
                 mediaPreview.appendChild(img);
-
                 var a = document.createElement('a');
                 a.href = fetchedMediaUrls[i];
                 a.target = '_blank';
                 a.textContent = fetchedMediaUrls[i];
                 mediaUrlsDiv.appendChild(a);
               }
-              document.getElementById('mediaSection').style.display = 'block';
+              document.getElementById('cloneMediaSection').style.display = 'block';
             } else {
-              document.getElementById('mediaSection').style.display = 'none';
+              document.getElementById('cloneMediaSection').style.display = 'none';
             }
 
-            // Switch to preview panel
-            fetchPanel.style.display = 'none';
-            previewPanel.style.display = 'block';
-            feedback.style.display = 'none';
+            document.getElementById('cloneFetchPanel').style.display = 'none';
+            document.getElementById('clonePreviewPanel').style.display = 'block';
           })
           .withFailureHandler(function (err) {
-            hideLoading();
-            fetchBtn.disabled = false;
-            showFeedback(err.message, 'error');
+            hideLoading('cloneLoading');
+            btn.disabled = false;
+            showFeedback('cloneFeedback', err.message, 'error');
           })
           .fetchTweetPreview(tweetLink);
       });
 
-      // --- Back button ---
-      backBtn.addEventListener('click', function () {
-        previewPanel.style.display = 'none';
-        fetchPanel.style.display = 'block';
-        feedback.style.display = 'none';
+      // Back button
+      document.getElementById('cloneBackBtn').addEventListener('click', function () {
+        document.getElementById('clonePreviewPanel').style.display = 'none';
+        document.getElementById('cloneFetchPanel').style.display = 'block';
+        hideFeedback('cloneFeedback');
       });
 
-      // --- Step 2: Submit ---
-      submitBtn.addEventListener('click', function () {
-        var tweetLink      = document.getElementById('tweetLink').value.trim();
-        var scheduleMode   = getScheduleMode();
-        var cronExpression = document.getElementById('cronExpression').value.trim();
-        var title          = document.getElementById('editTitle').value.trim();
-        var resourceLinks  = fetchedMediaUrls.join(',');
+      // Submit button
+      document.getElementById('cloneSubmitBtn').addEventListener('click', function () {
+        var title = document.getElementById('cloneEditTitle').value.trim();
+        if (!title) { showFeedback('cloneFeedback', 'Tweet text is required.', 'error'); return; }
 
-        if (!title) {
-          showFeedback('Tweet text is required.', 'error');
-          return;
-        }
-
+        var scheduleMode = getRadioValue('cloneSchedule');
+        var cronExpression = document.getElementById('cloneCron').value.trim();
         if (scheduleMode === 'cron' && !cronExpression) {
-          showFeedback('Cron expression is required.', 'error');
-          return;
+          showFeedback('cloneFeedback', 'Cron expression is required.', 'error'); return;
         }
 
-        submitBtn.disabled = true;
-        showLoading(scheduleMode === 'now' ? 'Posting tweet...' : 'Scheduling tweet...');
+        this.disabled = true;
+        hideFeedback('cloneFeedback');
+        showLoading('cloneLoading', scheduleMode === 'now' ? 'Posting tweet...' : 'Scheduling tweet...');
 
+        var btn = this;
         var params = {
-          tweetLink:      tweetLink,
+          tweetLink:      document.getElementById('cloneTweetLink').value.trim(),
           scheduleMode:   scheduleMode,
           cronExpression: cronExpression,
           title:          title,
-          resourceLinks:  resourceLinks
+          resourceLinks:  fetchedMediaUrls.join(','),
+          maxCount:       scheduleMode === 'cron' ? (document.getElementById('cloneMaxCount').value.trim() || '0') : '0'
         };
 
         google.script.run
           .withSuccessHandler(function (result) {
-            hideLoading();
-            submitBtn.disabled = false;
-
+            hideLoading('cloneLoading');
+            btn.disabled = false;
             if (result.success) {
-              showFeedback(result.message, 'success');
+              showFeedback('cloneFeedback', result.message, 'success');
               // Reset to step 1
-              previewPanel.style.display = 'none';
-              fetchPanel.style.display = 'block';
-              document.getElementById('tweetLink').value = '';
-              document.getElementById('cronExpression').value = '';
-              for (var i = 0; i < radios.length; i++) {
-                radios[i].checked = (radios[i].value === 'now');
-              }
-              cronGroup.style.display = 'none';
+              document.getElementById('clonePreviewPanel').style.display = 'none';
+              document.getElementById('cloneFetchPanel').style.display = 'block';
+              document.getElementById('cloneTweetLink').value = '';
+              document.getElementById('cloneCron').value = '';
+              document.getElementById('cloneMaxCount').value = '';
+              document.querySelectorAll('input[name="cloneSchedule"]').forEach(function (r) {
+                r.checked = (r.value === 'now');
+              });
+              document.getElementById('cloneCronGroup').style.display = 'none';
               fetchedMediaUrls = [];
             } else {
-              showFeedback(result.error, 'error');
+              showFeedback('cloneFeedback', result.error, 'error');
             }
           })
           .withFailureHandler(function (err) {
-            hideLoading();
-            submitBtn.disabled = false;
-            showFeedback(err.message, 'error');
+            hideLoading('cloneLoading');
+            btn.disabled = false;
+            showFeedback('cloneFeedback', err.message, 'error');
           })
           .handleFormSubmit(params);
+      });
+    }());
+
+    // ====================================================
+    // NEW TWEET TAB
+    // ====================================================
+    (function () {
+      // Toggle cron field
+      var newRadios = document.querySelectorAll('input[name="newSchedule"]');
+      for (var i = 0; i < newRadios.length; i++) {
+        newRadios[i].addEventListener('change', function () {
+          document.getElementById('newCronGroup').style.display =
+            (this.value === 'cron') ? 'block' : 'none';
+        });
+      }
+
+      // Submit button
+      document.getElementById('newSubmitBtn').addEventListener('click', function () {
+        var title = document.getElementById('newTitle').value.trim();
+        if (!title) { showFeedback('newFeedback', 'Tweet text is required.', 'error'); return; }
+
+        var scheduleMode = getRadioValue('newSchedule');
+        var cronExpression = document.getElementById('newCron').value.trim();
+        if (scheduleMode === 'cron' && !cronExpression) {
+          showFeedback('newFeedback', 'Cron expression is required.', 'error'); return;
+        }
+
+        this.disabled = true;
+        hideFeedback('newFeedback');
+        showLoading('newLoading', scheduleMode === 'now' ? 'Posting tweet...' : 'Scheduling tweet...');
+
+        var btn = this;
+        var params = {
+          title:          title,
+          resourceLinks:  document.getElementById('newResourceLink').value.trim(),
+          scheduleMode:   scheduleMode,
+          cronExpression: cronExpression,
+          maxCount:       scheduleMode === 'cron' ? (document.getElementById('newMaxCount').value.trim() || '0') : '0'
+        };
+
+        google.script.run
+          .withSuccessHandler(function (result) {
+            hideLoading('newLoading');
+            btn.disabled = false;
+            if (result.success) {
+              showFeedback('newFeedback', result.message, 'success');
+              // Reset form
+              document.getElementById('newTitle').value = '';
+              document.getElementById('newResourceLink').value = '';
+              document.getElementById('newCron').value = '';
+              document.getElementById('newMaxCount').value = '';
+              document.querySelectorAll('input[name="newSchedule"]').forEach(function (r) {
+                r.checked = (r.value === 'now');
+              });
+              document.getElementById('newCronGroup').style.display = 'none';
+              updateCharCount('newTitle', 'newCharCount');
+            } else {
+              showFeedback('newFeedback', result.error, 'error');
+            }
+          })
+          .withFailureHandler(function (err) {
+            hideLoading('newLoading');
+            btn.disabled = false;
+            showFeedback('newFeedback', err.message, 'error');
+          })
+          .handleNewTweet(params);
       });
     }());
   </script>

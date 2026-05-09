@@ -179,6 +179,23 @@ function postTweet(text, mediaUrls) {
 
   var body = { text: text };
 
+  // Upload media URLs and attach media_ids to the tweet
+  if (mediaUrls && mediaUrls.length > 0) {
+    var mediaIds = [];
+    for (var i = 0; i < mediaUrls.length; i++) {
+      var uploadResult = uploadMedia(mediaUrls[i]);
+      if (uploadResult.error) {
+        // Log the error but continue — post without that media
+        Logger.log('Media upload failed for ' + mediaUrls[i] + ': ' + uploadResult.error);
+      } else {
+        mediaIds.push(uploadResult.mediaId);
+      }
+    }
+    if (mediaIds.length > 0) {
+      body.media = { media_ids: mediaIds };
+    }
+  }
+
   var response = UrlFetchApp.fetch(url, {
     method: 'POST',
     headers: {
@@ -210,6 +227,76 @@ function postTweet(text, mediaUrls) {
 
   return { id: respBody.data && respBody.data.id };
 }
+
+/**
+ * Uploads an image from a URL to X via the v1.1 media upload API.
+ * Fetches the image bytes and uploads them to upload.twitter.com.
+ * @param {string} imageUrl  Public URL of the image to upload
+ * @returns {{ mediaId: string } | { error: string }}
+ */
+function uploadMedia(imageUrl) {
+  try {
+    // Fetch the image bytes
+    var imageResponse = UrlFetchApp.fetch(imageUrl, { muteHttpExceptions: true });
+    if (imageResponse.getResponseCode() !== 200) {
+      return { error: 'Failed to fetch image: HTTP ' + imageResponse.getResponseCode() };
+    }
+
+    var imageBytes = imageResponse.getContent();
+    var contentType = imageResponse.getHeaders()['Content-Type'] || 'image/jpeg';
+
+    // Base64-encode the image
+    var base64Image = Utilities.base64Encode(imageBytes);
+
+    // Build OAuth header for the upload endpoint
+    var uploadUrl = 'https://upload.twitter.com/1.1/media/upload.json';
+    var authHeader;
+    try {
+      authHeader = buildOAuth1Header('POST', uploadUrl, {});
+    } catch (e) {
+      return { error: 'auth error: ' + e.message };
+    }
+
+    // Upload via multipart form
+    var boundary = '----FormBoundary' + generateNonce();
+    var payload = '--' + boundary + '\r\n' +
+      'Content-Disposition: form-data; name="media_data"\r\n\r\n' +
+      base64Image + '\r\n' +
+      '--' + boundary + '--\r\n';
+
+    var uploadResponse = UrlFetchApp.fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: authHeader,
+        'Content-Type': 'multipart/form-data; boundary=' + boundary
+      },
+      payload: payload,
+      muteHttpExceptions: true
+    });
+
+    var statusCode = uploadResponse.getResponseCode();
+    if (statusCode !== 200 && statusCode !== 201) {
+      var errBody;
+      try { errBody = JSON.parse(uploadResponse.getContentText()); } catch (e) {}
+      var errMsg = (errBody && errBody.errors && errBody.errors[0]) ?
+        errBody.errors[0].message : 'HTTP ' + statusCode;
+      return { error: 'Media upload failed: ' + errMsg };
+    }
+
+    var respBody;
+    try {
+      respBody = JSON.parse(uploadResponse.getContentText());
+    } catch (e) {
+      return { error: 'Invalid response from media upload' };
+    }
+
+    return { mediaId: respBody.media_id_string };
+
+  } catch (e) {
+    return { error: 'Media upload error: ' + e.message };
+  }
+}
+
 
 /**
  * Generates a random nonce string for OAuth.

@@ -106,6 +106,7 @@ function handleFormSubmit(params) {
     var cronExpression = params.cronExpression;
     var title          = params.title || '';
     var resourceLinks  = params.resourceLinks || '';
+    var maxCount       = parseInt(params.maxCount, 10) || 0;
 
     // --- Validate tweet link ---
     var linkError = _validateTweetLink(tweetLink);
@@ -140,6 +141,8 @@ function handleFormSubmit(params) {
     writeCell(sheet, rowIndex, COL_RESOURCE_LINKS, resourceLinks);
     writeCell(sheet, rowIndex, COL_STATUS,         '');
     writeCell(sheet, rowIndex, COL_TITLE,          title);
+    writeCell(sheet, rowIndex, COL_MAX_COUNT,      maxCount);
+    writeCell(sheet, rowIndex, COL_POST_COUNT,     0);
 
     if (scheduleMode === 'now') {
       writeCell(sheet, rowIndex, COL_CRON, '');
@@ -171,6 +174,81 @@ function handleFormSubmit(params) {
     return { success: false, error: 'Unexpected error: ' + e.message };
   }
 }
+
+/**
+ * Handles submission of a brand-new tweet (not cloned from an existing one).
+ *
+ * @param {{ title: string, resourceLinks: string, scheduleMode: string, cronExpression?: string }} params
+ * @returns {{ success: boolean, message?: string, error?: string }}
+ */
+function handleNewTweet(params) {
+  try {
+    var title          = params.title || '';
+    var resourceLinks  = params.resourceLinks || '';
+    var scheduleMode   = params.scheduleMode;
+    var cronExpression = params.cronExpression;
+    var maxCount       = parseInt(params.maxCount, 10) || 0;
+
+    // --- Validate title ---
+    if (!title || !title.trim()) {
+      return { success: false, error: 'Tweet text is required.' };
+    }
+
+    // --- Validate cron expression (only in cron mode) ---
+    if (scheduleMode === 'cron') {
+      if (!cronExpression || !cronExpression.trim()) {
+        return { success: false, error: 'Cron expression is required.' };
+      }
+      var parsed = parseCronExpression(cronExpression);
+      if (!parsed) {
+        return {
+          success: false,
+          error: 'Cron expression is invalid. Use 5-field format: minute hour dom month dow.'
+        };
+      }
+    }
+
+    // --- Write new row to sheet ---
+    var sheet    = getOrCreateTweetSheet();
+    var rowIndex = _getNewRowIndex(sheet);
+
+    writeCell(sheet, rowIndex, COL_TWEET_LINK,     '');
+    writeCell(sheet, rowIndex, COL_RESOURCE_LINKS, resourceLinks);
+    writeCell(sheet, rowIndex, COL_STATUS,         '');
+    writeCell(sheet, rowIndex, COL_TITLE,          title);
+    writeCell(sheet, rowIndex, COL_MAX_COUNT,      maxCount);
+    writeCell(sheet, rowIndex, COL_POST_COUNT,     0);
+
+    if (scheduleMode === 'now') {
+      writeCell(sheet, rowIndex, COL_CRON, '');
+    } else if (scheduleMode === 'cron') {
+      writeCell(sheet, rowIndex, COL_CRON, cronExpression);
+    }
+
+    // --- Send Now: post immediately ---
+    if (scheduleMode === 'now') {
+      postTweetForRow(sheet, rowIndex, title, resourceLinks);
+
+      var colCValue = sheet.getRange(rowIndex, COL_STATUS).getValue();
+      if (String(colCValue).indexOf('error:') === 0) {
+        return { success: false, error: colCValue };
+      }
+
+      return { success: true, message: 'Tweet sent successfully.' };
+    }
+
+    // --- Cron mode: row written, scheduler will handle posting ---
+    if (scheduleMode === 'cron') {
+      return { success: true, message: 'Tweet scheduled successfully.' };
+    }
+
+    return { success: false, error: 'Unknown schedule mode: ' + scheduleMode };
+
+  } catch (e) {
+    return { success: false, error: 'Unexpected error: ' + e.message };
+  }
+}
+
 
 /**
  * Diagnostic function — run this directly from the Apps Script editor
