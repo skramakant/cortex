@@ -1,0 +1,28 @@
+# Node.js dependencies
+appscript/tests/node_modules/
+
+# npm logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+*.swp
+*.swo
+
+# Environment / secrets (never commit credentials)
+.env
+.env.*
+secrets.json
+
+# clasp (Google Apps Script CLI)
+.clasp.json
+
+# Build output
+dist/
+build/

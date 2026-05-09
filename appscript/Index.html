@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tweet Scheduler</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 24px 16px;
+      color: #333;
+      box-sizing: border-box;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      padding: 32px;
+    }
+
+    h1 {
+      margin: 0 0 24px;
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #444;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 0.95rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    input[type="text"]:focus {
+      border-color: #1d9bf0;
+    }
+
+    .radio-group {
+      display: flex;
+      gap: 24px;
+      margin-top: 4px;
+    }
+
+    .radio-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 400;
+      cursor: pointer;
+      font-size: 0.9rem;
+      color: #444;
+    }
+
+    input[type="radio"] {
+      cursor: pointer;
+    }
+
+    #cronGroup {
+      display: none;
+      margin-top: 16px;
+    }
+
+    button[type="submit"] {
+      width: 100%;
+      padding: 11px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      background: #1d9bf0;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    button[type="submit"]:hover {
+      background: #1a8cd8;
+    }
+
+    button[type="submit"]:disabled {
+      background: #93c9f5;
+      cursor: not-allowed;
+    }
+
+    #loading {
+      display: none;
+      text-align: center;
+      margin-top: 16px;
+      font-size: 0.9rem;
+      color: #666;
+    }
+
+    #feedback {
+      display: none;
+      margin-top: 20px;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+
+    #feedback.success {
+      color: #2e7d32;
+      background: #e8f5e9;
+      border: 1px solid #2e7d32;
+    }
+
+    #feedback.error {
+      color: #c62828;
+      background: #ffebee;
+      border: 1px solid #c62828;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Tweet Scheduler</h1>
+
+    <form id="tweetForm">
+
+      <div class="form-group">
+        <label for="tweetLink">Tweet Link</label>
+        <input
+          type="text"
+          id="tweetLink"
+          name="tweetLink"
+          placeholder="https://x.com/user/status/..."
+          autocomplete="off"
+        >
+      </div>
+
+      <div class="form-group">
+        <label>Schedule Mode</label>
+        <div class="radio-group">
+          <label class="radio-label">
+            <input type="radio" name="scheduleMode" value="now" checked>
+            Send Now
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="scheduleMode" value="cron">
+            Schedule with Cron Expression
+          </label>
+        </div>
+      </div>
+
+      <div id="cronGroup" class="form-group">
+        <label for="cronExpression">Cron Expression</label>
+        <input
+          type="text"
+          id="cronExpression"
+          name="cronExpression"
+          placeholder="e.g. 0 9 * * 1"
+          autocomplete="off"
+        >
+      </div>
+
+      <button type="submit" id="submitBtn">Submit</button>
+
+    </form>
+
+    <div id="loading">Processing...</div>
+
+    <div id="feedback"></div>
+  </div>
+
+  <script>
+    (function () {
+      var form       = document.getElementById('tweetForm');
+      var cronGroup  = document.getElementById('cronGroup');
+      var submitBtn  = document.getElementById('submitBtn');
+      var loading    = document.getElementById('loading');
+      var feedback   = document.getElementById('feedback');
+      var radios     = document.querySelectorAll('input[name="scheduleMode"]');
+
+      // Toggle cron field visibility
+      for (var i = 0; i < radios.length; i++) {
+        radios[i].addEventListener('change', function () {
+          cronGroup.style.display = (this.value === 'cron') ? 'block' : 'none';
+        });
+      }
+
+      function showLoading() {
+        submitBtn.disabled = true;
+        loading.style.display = 'block';
+        feedback.style.display = 'none';
+        feedback.className = '';
+        feedback.textContent = '';
+      }
+
+      function hideLoading() {
+        submitBtn.disabled = false;
+        loading.style.display = 'none';
+      }
+
+      function showFeedback(message, type) {
+        feedback.textContent = message;
+        feedback.className = type;
+        feedback.style.display = 'block';
+      }
+
+      function resetForm() {
+        document.getElementById('tweetLink').value = '';
+        for (var i = 0; i < radios.length; i++) {
+          radios[i].checked = (radios[i].value === 'now');
+        }
+        cronGroup.style.display = 'none';
+      }
+
+      function onSuccess(result) {
+        hideLoading();
+        if (result.success) {
+          showFeedback(result.message, 'success');
+          resetForm();
+        } else {
+          showFeedback(result.error, 'error');
+        }
+      }
+
+      function onFailure(err) {
+        hideLoading();
+        showFeedback(err.message, 'error');
+      }
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        var tweetLink      = document.getElementById('tweetLink').value;
+        var checkedRadio   = document.querySelector('input[name="scheduleMode"]:checked');
+        var scheduleMode   = checkedRadio ? checkedRadio.value : 'now';
+        var cronExpression = document.getElementById('cronExpression').value;
+
+        var params = {
+          tweetLink:      tweetLink,
+          scheduleMode:   scheduleMode,
+          cronExpression: cronExpression
+        };
+
+        showLoading();
+
+        google.script.run
+          .withSuccessHandler(onSuccess)
+          .withFailureHandler(onFailure)
+          .handleFormSubmit(params);
+      });
+    }());
+  </script>
+</body>
+</html>
