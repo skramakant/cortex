@@ -236,7 +236,7 @@
 
         <div class="mb-4">
           <label for="newResourceLink" class="block text-sm font-medium text-gray-700 mb-1">
-            Resource Link <span class="font-normal text-gray-400">(optional — image or video URL)</span>
+            Image URL <span class="font-normal text-gray-400">(optional — paste a public image URL)</span>
           </label>
           <input
             type="text"
@@ -245,6 +245,38 @@
             autocomplete="off"
             class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
           >
+        </div>
+
+        <!-- Local image upload -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            Upload Image <span class="font-normal text-gray-400">(optional — from your device)</span>
+          </label>
+          <div
+            id="newImageDropZone"
+            class="relative flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg p-5 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+          >
+            <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+            </svg>
+            <p class="text-sm text-gray-500">Drag &amp; drop or <span class="text-blue-500 font-medium">browse</span></p>
+            <p class="text-xs text-gray-400">JPG, PNG, GIF, WEBP — max 5 MB</p>
+            <input type="file" id="newImageFile" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+          </div>
+          <!-- Preview of selected local image -->
+          <div id="newImagePreview" class="hidden mt-3 flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <img id="newImageThumb" src="" alt="preview" class="w-16 h-16 object-cover rounded border border-gray-200 shrink-0">
+            <div class="flex-1 min-w-0">
+              <p id="newImageName" class="text-sm font-medium text-gray-700 truncate"></p>
+              <p id="newImageSize" class="text-xs text-gray-400 mt-0.5"></p>
+            </div>
+            <button id="newImageClear" type="button" class="shrink-0 text-gray-400 hover:text-red-500 transition-colors" aria-label="Remove image">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <p class="mt-1 text-xs text-gray-400">If both a URL and a file are provided, the uploaded file takes priority.</p>
         </div>
 
         <div class="mb-4">

@@ -285,12 +285,85 @@ function resetCronBuilder(prefix) {
 // ============================================================
 
 (function initNewTab() {
-  var feedbackEl = document.getElementById('newFeedback');
-  var loadingEl  = document.getElementById('newLoading');
-  var submitBtn  = document.getElementById('newSubmitBtn');
-  var titleArea  = document.getElementById('newTitle');
-  var charCount  = document.getElementById('newCharCount');
-  var cronGroup  = document.getElementById('newCronGroup');
+  var feedbackEl  = document.getElementById('newFeedback');
+  var loadingEl   = document.getElementById('newLoading');
+  var submitBtn   = document.getElementById('newSubmitBtn');
+  var titleArea   = document.getElementById('newTitle');
+  var charCount   = document.getElementById('newCharCount');
+  var cronGroup   = document.getElementById('newCronGroup');
+  var fileInput   = document.getElementById('newImageFile');
+  var dropZone    = document.getElementById('newImageDropZone');
+  var previewBox  = document.getElementById('newImagePreview');
+  var thumb       = document.getElementById('newImageThumb');
+  var nameEl      = document.getElementById('newImageName');
+  var sizeEl      = document.getElementById('newImageSize');
+  var clearBtn    = document.getElementById('newImageClear');
+
+  var selectedImageBase64 = null;  // stores the Base64 string of the selected file
+
+  // ---- Image file handling ----
+
+  function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function handleImageFile(file) {
+    if (!file || !file.type.startsWith('image/')) {
+      showFeedback(feedbackEl, 'Please select a valid image file.', 'error');
+      return;
+    }
+    var MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+    if (file.size > MAX_BYTES) {
+      showFeedback(feedbackEl, 'Image must be smaller than 5 MB.', 'error');
+      return;
+    }
+
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var dataUrl = e.target.result;
+      // Strip the "data:image/...;base64," prefix — send only the raw Base64
+      selectedImageBase64 = dataUrl.split(',')[1];
+
+      // Show preview
+      thumb.src      = dataUrl;
+      nameEl.textContent = file.name;
+      sizeEl.textContent = formatBytes(file.size);
+      previewBox.classList.remove('hidden');
+      hideFeedback(feedbackEl);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  fileInput.addEventListener('change', function() {
+    if (this.files && this.files[0]) handleImageFile(this.files[0]);
+  });
+
+  // Drag-and-drop
+  dropZone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    dropZone.classList.add('border-blue-400', 'bg-blue-50');
+  });
+  dropZone.addEventListener('dragleave', function() {
+    dropZone.classList.remove('border-blue-400', 'bg-blue-50');
+  });
+  dropZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dropZone.classList.remove('border-blue-400', 'bg-blue-50');
+    var file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) handleImageFile(file);
+  });
+
+  // Clear button
+  clearBtn.addEventListener('click', function() {
+    selectedImageBase64 = null;
+    fileInput.value     = '';
+    thumb.src           = '';
+    previewBox.classList.add('hidden');
+  });
+
+  // ---- Schedule mode toggle ----
 
   document.querySelectorAll('input[name="newSchedule"]').forEach(function(radio) {
     radio.addEventListener('change', function() {
@@ -301,6 +374,8 @@ function resetCronBuilder(prefix) {
   titleArea.addEventListener('input', function() {
     updateCharCount(titleArea, charCount);
   });
+
+  // ---- Submit ----
 
   submitBtn.addEventListener('click', async function() {
     var title = titleArea.value.trim();
@@ -322,7 +397,11 @@ function resetCronBuilder(prefix) {
     try {
       var params = {
         title:          title,
-        resourceLinks:  document.getElementById('newResourceLink').value.trim(),
+        // Uploaded file takes priority over URL if both are provided
+        resourceLinks:  selectedImageBase64
+          ? ''
+          : document.getElementById('newResourceLink').value.trim(),
+        imageBase64:    selectedImageBase64 || '',
         scheduleMode:   scheduleMode,
         cronExpression: cronExpression,
         maxCount:       scheduleMode === 'cron'
@@ -341,6 +420,10 @@ function resetCronBuilder(prefix) {
         cronGroup.classList.add('hidden');
         resetCronBuilder('new');
         updateCharCount(titleArea, charCount);
+        // Clear image
+        selectedImageBase64 = null;
+        fileInput.value     = '';
+        previewBox.classList.add('hidden');
       } else {
         showFeedback(feedbackEl, result.error, 'error');
       }
