@@ -469,8 +469,8 @@ describe('doPost() — routing', () => {
     const e = {
       postData: {
         contents: JSON.stringify({
-          action: 'fetchPreview',
-          apiKey: VALID_KEY,
+          action:   'fetchPreview',
+          apiKey:   VALID_KEY,
           tweetUrl: 'https://x.com/u/status/123'
         })
       }

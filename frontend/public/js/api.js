@@ -2,6 +2,9 @@
  * api.js — All GAS API calls.
  * __GAS_URL__ and __API_KEY__ are replaced at build time by inject-env.js.
  * GAS_URL and API_KEY are stored as GitHub Secrets and injected by GitHub Actions.
+ *
+ * CORS note: Content-Type: text/plain is a "simple request" — no preflight.
+ * GAS receives the raw body in e.postData.contents and we JSON.parse it there.
  */
 
 const GAS_URL = '__GAS_URL__';
@@ -9,7 +12,8 @@ const API_KEY = '__API_KEY__';
 
 /**
  * Low-level POST to the GAS backend.
- * Automatically includes the API key in every request body.
+ * Uses Content-Type: text/plain to avoid CORS preflight.
+ * GAS reads the body via e.postData.contents and JSON.parses it.
  * @param {Object} params
  * @returns {Promise<{success: boolean, message?: string, error?: string}>}
  */
@@ -18,7 +22,7 @@ async function gasPost(params) {
   try {
     response = await fetch(GAS_URL, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' },
       body:    JSON.stringify({ ...params, apiKey: API_KEY }),
     });
   } catch (err) {
@@ -26,7 +30,7 @@ async function gasPost(params) {
   }
 
   if (!response.ok) {
-    return { success: false, error: `Network error: HTTP ${response.status}` };
+    return { success: false, error: 'Network error: HTTP ' + response.status };
   }
 
   let data;

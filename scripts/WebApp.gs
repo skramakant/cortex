@@ -13,7 +13,11 @@
 
 /**
  * HTTP POST handler — entry point for all frontend API calls.
- * Parses the JSON body, validates the API key, routes by action, and returns a JSON response.
+ *
+ * The frontend sends Content-Type: text/plain (a CORS "simple request" —
+ * no preflight). GAS receives the raw JSON body in e.postData.contents.
+ *
+ * Parses the body, validates the API key, routes by action field.
  * @param {Object} e  The POST event object.
  * @returns {GoogleAppsScript.Content.TextOutput}
  */
