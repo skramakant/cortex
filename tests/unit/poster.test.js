@@ -13,9 +13,9 @@ const vm = require('vm');
 const fs = require('fs');
 const path = require('path');
 
-const CONSTANTS_PATH = path.resolve(__dirname, '../../Constants.gs');
-const SHEET_UTILS_PATH = path.resolve(__dirname, '../../SheetUtils.gs');
-const POSTER_PATH = path.resolve(__dirname, '../../Poster.gs');
+const CONSTANTS_PATH = path.resolve(__dirname, '../../scripts/Constants.gs');
+const SHEET_UTILS_PATH = path.resolve(__dirname, '../../scripts/SheetUtils.gs');
+const POSTER_PATH = path.resolve(__dirname, '../../scripts/Poster.gs');
 
 const constantsCode = fs.readFileSync(CONSTANTS_PATH, 'utf8');
 const sheetUtilsCode = fs.readFileSync(SHEET_UTILS_PATH, 'utf8');

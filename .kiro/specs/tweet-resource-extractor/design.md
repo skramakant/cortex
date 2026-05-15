@@ -8,88 +8,120 @@
 
 This document describes the technical design for a Google Apps Script bound to a Google Sheet named "tweet". The script automates two workflows:
 
-1. **Resource Extraction**: Given a tweet URL in column A, fetch the tweet's text and media (images/videos) and write them into columns D and B respectively.
-2. **Cron-Based Scheduling**: Evaluate cron expressions in column E and post tweets via the Twitter/X API when the schedule matches the current time.
+1. **Resource Extraction**: Given a tweet URL in column A, fetch the tweet's text and media (images/videos) via the X API v2 and write them into columns D and B respectively.
+2. **Cron-Based Scheduling**: Evaluate cron expressions in column E and post tweets via the Twitter/X API when the schedule matches the current time, respecting optional repeat limits in columns F and G.
 
 ### Key Design Decisions
 
-- **Twitter/X API v2 for reading and writing**: The X API v2 `GET /2/tweets/:id` endpoint (with `expansions=attachments.media_keys&media.fields=url,preview_image_url,type`) is used to extract tweet text and media URLs. The `POST /2/tweets` endpoint is used to post tweets. Both require OAuth 1.0a User Context authentication.
-- **OAuth 1.0a implemented inline**: Google Apps Script does not have a native OAuth 1.0a library for Twitter. The HMAC-SHA1 signature is computed using `Utilities.computeHmacSha1Signature` and base64-encoded, following the standard OAuth 1.0a signing process.
+- **X API v2 base URL `api.x.com`**: All API calls use `https://api.x.com/2/...`. The `GET /2/tweets/:id` endpoint (with `expansions=attachments.media_keys&media.fields=url,preview_image_url,type`) extracts tweet text and media URLs. The `POST /2/tweets` endpoint posts tweets. Both require OAuth 1.0a User Context authentication.
+- **Media upload via v1.1 API**: Images are uploaded to `https://upload.twitter.com/1.1/media/upload.json` before posting. The returned `media_id_string` is attached to the tweet body. Upload failures are logged but do not block the post.
+- **OAuth 1.0a implemented inline**: HMAC-SHA1 signatures are computed using `Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, ...)` and base64-encoded, following the standard OAuth 1.0a signing process.
 - **Credentials stored in PropertiesService**: API keys and tokens are stored in `PropertiesService.getScriptProperties()` rather than hardcoded, keeping secrets out of source code.
 - **Cron parser implemented in pure GAS JavaScript**: A lightweight 5-field cron parser is implemented directly in the script. No external libraries are needed.
 - **Trigger runs every minute**: A time-based `ScriptApp` trigger calls `runScheduler` every minute, which evaluates all pending cron rows.
+- **7-column sheet schema**: Two columns were added beyond the original 5 — `max count` (F) and `post count` (G) — to support repeat scheduling with an optional upper limit.
 
 ---
 
 ## Architecture
 
-The script is organized into four logical modules, each implemented as a set of top-level functions in a single `.gs` file (or split across multiple files in the Apps Script project):
-
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Google Sheet ("tweet")                    │
-│  Col A: tweet link  │ B: resource links │ C: status         │
-│  Col D: title       │ E: cron expression                    │
-└──────────────┬──────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                      Google Sheet ("tweet")                       │
+│  A: tweet link  │ B: resource links │ C: status  │ D: title      │
+│  E: cron expr   │ F: max count      │ G: post count              │
+└──────────────┬───────────────────────────────────────────────────┘
                │ read / write
-┌──────────────▼──────────────────────────────────────────────┐
-│                    Google Apps Script                        │
-│                                                              │
-│  ┌─────────────┐   ┌──────────────┐   ┌──────────────────┐  │
-│  │  SheetUtils  │   │  Extractor   │   │    Scheduler     │  │
-│  │             │   │              │   │                  │  │
-│  │ getSheet()  │   │ extractAll() │   │ runScheduler()   │  │
-│  │ getHeaders()│   │ fetchTweet() │   │ matchesCron()    │  │
-│  │ ensureSheet │   │ parseMedia() │   │ parseCron()      │  │
-│  └─────────────┘   └──────┬───────┘   └────────┬─────────┘  │
-│                           │                    │             │
-│                    ┌──────▼────────────────────▼──────────┐  │
-│                    │           Twitter/X API Client        │  │
-│                    │                                       │  │
-│                    │  getTweet(tweetId)                    │  │
-│                    │  postTweet(text, mediaIds)            │  │
-│                    │  buildOAuth1Header(method, url, ...)  │  │
-│                    └───────────────────────────────────────┘  │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │                  Trigger Manager                      │   │
-│  │  setupTriggers() / removeTriggers()                   │   │
-│  └──────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-               │ HTTP
-┌──────────────▼──────────────────────────────────────────────┐
-│                    Twitter/X API v2                          │
-│  GET  /2/tweets/:id?expansions=...&media.fields=...          │
-│  POST /2/tweets                                              │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────▼───────────────────────────────────────────────────┐
+│                      Google Apps Script                           │
+│                                                                   │
+│  ┌─────────────┐  ┌──────────────┐  ┌──────────────────────────┐ │
+│  │  SheetUtils  │  │  Extractor   │  │       Scheduler          │ │
+│  │             │  │              │  │                          │ │
+│  │ getOrCreate │  │ extractAll() │  │ runScheduler()           │ │
+│  │ TweetSheet()│  │ processRow() │  │ matchesCronSchedule()    │ │
+│  │ getAllRows() │  │ extractId()  │  │ parseCronExpression()    │ │
+│  │ writeCell() │  │              │  │ matchesCronField()       │ │
+│  └─────────────┘  └──────┬───────┘  └────────────┬─────────────┘ │
+│                          │                       │               │
+│                   ┌──────▼───────────────────────▼─────────────┐ │
+│                   │           Twitter/X API Client              │ │
+│                   │                                             │ │
+│                   │  fetchTweetData(tweetId)                    │ │
+│                   │  postTweet(text, mediaUrls)                 │ │
+│                   │  uploadMedia(imageUrl)                      │ │
+│                   │  buildOAuth1Header(method, url, params)     │ │
+│                   │  getCredentials()                           │ │
+│                   └─────────────────────────────────────────────┘ │
+│                                                                   │
+│  ┌──────────────┐  ┌──────────────────────────────────────────┐  │
+│  │    Poster    │  │            Trigger Manager               │  │
+│  │              │  │                                          │  │
+│  │ postTweet    │  │  setupTriggers() / removeTriggers()      │  │
+│  │ ForRow()     │  │                                          │  │
+│  └──────────────┘  └──────────────────────────────────────────┘  │
+│                                                                   │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │                       WebApp                             │    │
+│  │  doPost(e) — action-based JSON API router                │    │
+│  │  handleFormSubmit(params) — clone tweet flow             │    │
+│  │  handleNewTweet(params)   — new tweet flow               │    │
+│  │  fetchTweetPreview(url)   — preview without writing      │    │
+│  └──────────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────┘
+               │ HTTPS
+┌──────────────▼───────────────────────────────────────────────────┐
+│                      Twitter/X API                                │
+│  GET  https://api.x.com/2/tweets/:id?expansions=...              │
+│  POST https://api.x.com/2/tweets                                 │
+│  POST https://upload.twitter.com/1.1/media/upload.json           │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ### Module Responsibilities
 
-| Module | Responsibility |
-|---|---|
-| **SheetUtils** | Locate or create the "tweet" sheet; read/write cell ranges; validate headers |
-| **Extractor** | Scan eligible rows; call the API client to fetch tweet data; write results to columns B and D |
-| **Scheduler** | Scan eligible rows; parse and evaluate cron expressions; invoke the Poster for matching rows |
-| **Poster** | Post tweet text and media via the API client; update column C status |
-| **Twitter/X API Client** | Build OAuth 1.0a signatures; make `UrlFetchApp` calls to the X API |
-| **Trigger Manager** | Install and remove time-based `ScriptApp` triggers |
+| Module | File | Responsibility |
+|---|---|---|
+| **SheetUtils** | `SheetUtils.gs` | Locate or create the "tweet" sheet; read/write cell ranges |
+| **Extractor** | `Extractor.gs` | Scan eligible rows; call the API client to fetch tweet data; write results to columns B and D |
+| **Scheduler** | `Scheduler.gs` | Scan eligible rows; parse and evaluate cron expressions; enforce max count; invoke the Poster for matching rows |
+| **Poster** | `Poster.gs` | Post tweet text and media via the API client; update column C status |
+| **Twitter/X API Client** | `TwitterClient.gs` | Build OAuth 1.0a signatures; make `UrlFetchApp` calls to the X API; upload media |
+| **Trigger Manager** | `TriggerManager.gs` | Install and remove time-based `ScriptApp` triggers |
+| **WebApp** | `WebApp.gs` | HTTP `doPost` handler; action-based routing; clone tweet and new tweet flows |
+| **Constants** | `Constants.gs` | Column index constants shared across all modules |
+| **Main** | `Main.gs` | Documentation-only entry point; no executable code |
 
 ---
 
 ## Components and Interfaces
 
-### SheetUtils
+### Constants (`Constants.gs`)
+
+```javascript
+var COL_TWEET_LINK     = 1;  // A — URL of the source tweet (blank for new tweets)
+var COL_RESOURCE_LINKS = 2;  // B — comma-separated media URLs, "none", or "error: ..."
+var COL_STATUS         = 3;  // C — "", "sent", or "error: ..."
+var COL_TITLE          = 4;  // D — tweet text to post
+var COL_CRON           = 5;  // E — 5-field cron expression or ""
+var COL_MAX_COUNT      = 6;  // F — max number of times to post (0 = unlimited)
+var COL_POST_COUNT     = 7;  // G — number of times posted so far
+```
+
+### SheetUtils (`SheetUtils.gs`)
 
 ```javascript
 /**
- * Returns the "tweet" sheet, creating it with headers if it doesn't exist.
+ * Returns the "tweet" sheet, creating it with 7-column headers if it doesn't exist.
+ * Headers: "tweet link", "resource links", "status", "title",
+ *          "cron expression", "max count", "post count"
  * @returns {GoogleAppsScript.Spreadsheet.Sheet}
  */
 function getOrCreateTweetSheet()
 
 /**
  * Returns all data rows (excluding header row 1) as a 2D array.
+ * Each row has 7 elements corresponding to columns A–G.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @returns {Array<Array<any>>}
  */
@@ -105,21 +137,12 @@ function getAllRows(sheet)
 function writeCell(sheet, rowIndex, colIndex, value)
 ```
 
-Column index constants:
-```javascript
-const COL_TWEET_LINK     = 1;  // A
-const COL_RESOURCE_LINKS = 2;  // B
-const COL_STATUS         = 3;  // C
-const COL_TITLE          = 4;  // D
-const COL_CRON           = 5;  // E
-```
-
-### Extractor
+### Extractor (`Extractor.gs`)
 
 ```javascript
 /**
  * Entry point: scans all rows where col A is non-empty and col B is empty,
- * then fetches and writes resource links and title.
+ * then fetches and writes resource links (col B) and title (col D).
  */
 function extractResources()
 
@@ -133,26 +156,28 @@ function processExtractionRow(sheet, rowIndex, tweetUrl)
 
 /**
  * Extracts the tweet ID from a Twitter/X URL.
- * Handles formats: twitter.com/user/status/ID and x.com/user/status/ID
+ * Handles: twitter.com/user/status/ID and x.com/user/status/ID
  * @param {string} url
  * @returns {string|null}  tweet ID string, or null if not parseable
  */
 function extractTweetId(url)
 ```
 
-### Scheduler
+### Scheduler (`Scheduler.gs`)
 
 ```javascript
 /**
  * Entry point: scans all rows where col E is non-empty and col C is not "sent",
- * evaluates cron expressions, and posts matching tweets.
+ * evaluates cron expressions, enforces max count, and posts matching tweets.
+ * After a successful post, increments col G (post count).
+ * If max count is reached after posting, writes "sent" to col C.
  */
 function runScheduler()
 
 /**
  * Parses a 5-field cron expression into a structured object.
  * Fields: minute hour day-of-month month day-of-week
- * Supports: * (wildcard), specific values, ranges (1-5), step values (*\/5), lists (1,3,5)
+ * Supports: * (wildcard), specific values, ranges (1-5), steps (*\/5), lists (1,3,5)
  * @param {string} cronStr
  * @returns {{ minute, hour, dom, month, dow } | null}  null if invalid
  */
@@ -169,52 +194,72 @@ function matchesCronSchedule(parsedCron, date)
 /**
  * Evaluates whether a single cron field value matches a given numeric value.
  * Handles wildcards, lists, ranges, and step expressions.
- * @param {string} field  one cron field token (e.g. "*/5", "1-5", "3,7")
+ * @param {string} field  one cron field token (e.g. "*\/5", "1-5", "3,7")
  * @param {number} value  the current time component value
  * @param {number} min    minimum valid value for this field
  * @param {number} max    maximum valid value for this field
  * @returns {boolean}
  */
 function matchesCronField(field, value, min, max)
+
+/**
+ * Validates that a cron field string is syntactically correct for the given range.
+ * @param {string} field
+ * @param {number} min
+ * @param {number} max
+ * @returns {boolean}
+ */
+function isValidCronField(field, min, max)
 ```
 
-### Poster
+### Poster (`Poster.gs`)
 
 ```javascript
 /**
- * Posts a tweet for the given row. Reads title from col D and resource links from col B.
+ * Posts a tweet for the given row using the title from col D and media from col B.
  * Writes "sent" or "error: ..." to col C.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @param {number} rowIndex  1-based
- * @param {string} title     tweet text (col D)
+ * @param {string} title          tweet text (col D)
  * @param {string} resourceLinks  comma-separated URLs or "none" (col B)
  */
 function postTweetForRow(sheet, rowIndex, title, resourceLinks)
 ```
 
-### Twitter/X API Client
+### Twitter/X API Client (`TwitterClient.gs`)
 
 ```javascript
 /**
  * Fetches a tweet by ID using the X API v2.
- * Requests: tweet.fields=text and expansions=attachments.media_keys
- * with media.fields=url,preview_image_url,type
+ * Endpoint: GET https://api.x.com/2/tweets/{tweetId}
  * @param {string} tweetId
  * @returns {{ text: string, mediaUrls: string[] } | { error: string }}
  */
 function fetchTweetData(tweetId)
 
 /**
- * Posts a tweet via the X API v2 POST /2/tweets.
+ * Posts a tweet via the X API v2.
+ * Endpoint: POST https://api.x.com/2/tweets
+ * Uploads media URLs via uploadMedia() before posting if provided.
  * @param {string} text
- * @param {string[]} [mediaUrls]  optional array of media URLs to attach
+ * @param {string[]} [mediaUrls]  optional array of media URLs to upload and attach
  * @returns {{ id: string } | { error: string }}
  */
 function postTweet(text, mediaUrls)
 
 /**
+ * Uploads an image from a public URL to the Twitter v1.1 media upload API.
+ * Endpoint: POST https://upload.twitter.com/1.1/media/upload.json
+ * Fetches image bytes, base64-encodes them, and uploads as multipart form data.
+ * Upload failures are non-fatal — the caller logs the error and continues.
+ * @param {string} imageUrl  Public URL of the image to upload
+ * @returns {{ mediaId: string } | { error: string }}
+ */
+function uploadMedia(imageUrl)
+
+/**
  * Builds an OAuth 1.0a Authorization header for a given HTTP request.
- * Uses HMAC-SHA1 signing via Utilities.computeHmacSha1Signature.
+ * Uses Utilities.computeHmacSignature(HMAC_SHA_1, ...) for signing.
  * @param {string} method   HTTP method ("GET" or "POST")
  * @param {string} url      full endpoint URL (without query string)
  * @param {Object} params   query/body parameters to include in signature
@@ -230,9 +275,22 @@ function buildOAuth1Header(method, url, params)
  * @throws {Error} if any credential is missing
  */
 function getCredentials()
+
+/**
+ * Generates a random 32-character alphanumeric nonce for OAuth.
+ * @returns {string}
+ */
+function generateNonce()
+
+/**
+ * Percent-encodes a string per RFC 3986.
+ * @param {string} str
+ * @returns {string}
+ */
+function percentEncode(str)
 ```
 
-### Trigger Manager
+### Trigger Manager (`TriggerManager.gs`)
 
 ```javascript
 /**
@@ -242,9 +300,75 @@ function getCredentials()
 function setupTriggers()
 
 /**
- * Removes all triggers created by setupTriggers.
+ * Removes all triggers whose handler function is runScheduler.
  */
 function removeTriggers()
+```
+
+### WebApp (`WebApp.gs`)
+
+```javascript
+/**
+ * HTTP POST handler — entry point for all frontend API calls.
+ * Reads JSON body from e.postData.contents and routes by the `action` field.
+ *
+ * Supported actions:
+ *   "fetchPreview"  → fetchTweetPreview(params.tweetUrl)
+ *   "submitTweet"   → handleFormSubmit(params)   (clone tweet flow)
+ *   "newTweet"      → handleNewTweet(params)      (new tweet flow)
+ *
+ * @param {Object} e  The POST event object (e.postData.contents is the JSON body)
+ * @returns {GoogleAppsScript.Content.TextOutput}  JSON response
+ */
+function doPost(e)
+
+/**
+ * Fetches tweet data for preview without writing to the sheet.
+ * @param {string} tweetUrl
+ * @returns {{ success: boolean, text?: string, mediaUrls?: string[], error?: string }}
+ */
+function fetchTweetPreview(tweetUrl)
+
+/**
+ * Handles submission of a cloned tweet (from an existing tweet URL).
+ * The title and resourceLinks are provided by the caller (pre-fetched by the frontend).
+ * Validates inputs, writes a new row, and posts immediately or schedules.
+ *
+ * @param {{ tweetLink: string, scheduleMode: string, title: string,
+ *           resourceLinks: string, cronExpression?: string, maxCount?: number }} params
+ * @returns {{ success: boolean, message?: string, error?: string }}
+ */
+function handleFormSubmit(params)
+
+/**
+ * Handles submission of a brand-new tweet (no source URL).
+ * Validates inputs, writes a new row, and posts immediately or schedules.
+ *
+ * @param {{ title: string, resourceLinks: string, scheduleMode: string,
+ *           cronExpression?: string, maxCount?: number }} params
+ * @returns {{ success: boolean, message?: string, error?: string }}
+ */
+function handleNewTweet(params)
+
+/**
+ * Validates a tweet URL.
+ * @param {string} url
+ * @returns {string|null}  null if valid; error string if invalid
+ */
+function _validateTweetLink(url)
+
+/**
+ * Returns the 1-based row index for the next empty row.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @returns {number}
+ */
+function _getNewRowIndex(sheet)
+
+/**
+ * Diagnostic helper — run from the Apps Script editor to verify credentials
+ * and sheet access. Logs results to the Execution Log.
+ */
+function diagnoseCreds()
 ```
 
 ---
@@ -257,17 +381,19 @@ Each data row in the "tweet" sheet maps to the following logical structure:
 
 ```
 Row {
-  tweetLink:     string   // col A — URL of the source tweet
-  resourceLinks: string   // col B — comma-separated media URLs, "none", "error: ...", or ""
-  status:        string   // col C — "", "sent", or "error: ..."
-  title:         string   // col D — tweet text, "error: ...", or ""
-  cronExpression:string   // col E — 5-field cron string or ""
+  tweetLink:      string   // col A — URL of the source tweet, or "" for new tweets
+  resourceLinks:  string   // col B — comma-separated media URLs, "none", "error: ...", or ""
+  status:         string   // col C — "", "sent", or "error: ..."
+  title:          string   // col D — tweet text to post
+  cronExpression: string   // col E — 5-field cron string or ""
+  maxCount:       number   // col F — max posts (0 = unlimited)
+  postCount:      number   // col G — times posted so far
 }
 ```
 
 ### Tweet API Response Model
 
-The X API v2 response for `GET /2/tweets/:id` with expansions:
+The X API v2 response for `GET https://api.x.com/2/tweets/:id` with expansions:
 
 ```json
 {
@@ -277,30 +403,46 @@ The X API v2 response for `GET /2/tweets/:id` with expansions:
   },
   "includes": {
     "media": [
-      {
-        "media_key": "3_1234567890",
-        "type": "photo",
-        "url": "https://pbs.twimg.com/media/..."
-      },
-      {
-        "media_key": "7_1234567890",
-        "type": "video",
-        "preview_image_url": "https://pbs.twimg.com/ext_tw_video_thumb/..."
-      }
+      { "media_key": "3_...", "type": "photo", "url": "https://pbs.twimg.com/media/..." },
+      { "media_key": "7_...", "type": "video", "preview_image_url": "https://pbs.twimg.com/..." }
     ]
   }
 }
 ```
 
-The client normalizes this into:
+Normalized client output:
 ```javascript
 {
   text: "Tweet text content here",
   mediaUrls: [
-    "https://pbs.twimg.com/media/...",          // photo: use url
+    "https://pbs.twimg.com/media/...",       // photo: use url
     "https://pbs.twimg.com/ext_tw_video_thumb/..." // video: use preview_image_url
   ]
 }
+```
+
+### WebApp Request / Response Models
+
+**Request body (JSON, sent by frontend via `fetch()`):**
+```javascript
+// Preview
+{ action: "fetchPreview", tweetUrl: string }
+
+// Clone tweet
+{ action: "submitTweet", tweetLink: string, title: string, resourceLinks: string,
+  scheduleMode: "now"|"cron", cronExpression?: string, maxCount?: number }
+
+// New tweet
+{ action: "newTweet", title: string, resourceLinks: string,
+  scheduleMode: "now"|"cron", cronExpression?: string, maxCount?: number }
+```
+
+**Response (JSON):**
+```javascript
+{ success: true,  message: string }   // success
+{ success: false, error: string }     // failure
+// fetchPreview success:
+{ success: true, text: string, mediaUrls: string[] }
 ```
 
 ### Parsed Cron Model
@@ -330,83 +472,63 @@ Stored in `PropertiesService.getScriptProperties()`:
 
 ## Correctness Properties
 
-*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
-
 ### Property 1: Extractor processes exactly the eligible rows
 
-*For any* sheet state, after `extractResources()` runs, the set of rows that were written to (columns B and D updated) SHALL be exactly the set of rows where column A was non-empty AND column B was empty before the run — no more, no fewer.
+*For any* sheet state, after `extractResources()` runs, the set of rows written to (columns B and D updated) SHALL be exactly the set of rows where column A was non-empty AND column B was empty before the run.
 
 **Validates: Requirements 2.1, 2.6, 3.4**
 
----
-
 ### Property 2: Extractor preserves previously extracted data
 
-*For any* sheet state, after `extractResources()` runs, every row that had a non-empty value in column B before the run SHALL have the same value in column B after the run (previously extracted data is never overwritten).
+*For any* sheet state, after `extractResources()` runs, every row that had a non-empty value in column B before the run SHALL have the same value in column B after the run.
 
 **Validates: Requirements 2.6**
 
----
-
 ### Property 3: Resource link output round-trips cleanly
 
-*For any* array of one or more non-empty URL strings produced by a tweet fetch, the comma-separated string written to column B SHALL split back (on `","`) into the same array of URLs with no leading or trailing whitespace on any entry.
+*For any* array of one or more non-empty URL strings, the comma-separated string written to column B SHALL split back (on `","`) into the same array of URLs with no leading or trailing whitespace.
 
 **Validates: Requirements 2.3**
 
----
-
 ### Property 4: Cron field matching is correct for all valid inputs and syntax forms
 
-*For any* valid 5-field cron expression (using any combination of `*`, specific values, ranges `A-B`, step expressions `*/N`, and comma-separated lists) and any `Date` value, `matchesCronSchedule(parsedCron, date)` SHALL return `true` if and only if each of the five fields independently matches the corresponding date component (minute 0–59, hour 0–23, day-of-month 1–31, month 1–12, day-of-week 0–6).
+*For any* valid 5-field cron expression and any `Date` value, `matchesCronSchedule(parsedCron, date)` SHALL return `true` if and only if each of the five fields independently matches the corresponding date component.
 
 **Validates: Requirements 4.2, 4.6**
 
----
-
 ### Property 5: Scheduler processes exactly the eligible rows and skips sent rows
 
-*For any* sheet state, after `runScheduler()` runs, the set of rows evaluated for cron matching SHALL be exactly the set of rows where column E was non-empty AND column C was not `"sent"` before the run. Rows with `"sent"` in column C SHALL never be passed to the Poster.
+*For any* sheet state, after `runScheduler()` runs, the set of rows evaluated for cron matching SHALL be exactly the set of rows where column E was non-empty AND column C was not `"sent"` before the run.
 
 **Validates: Requirements 4.1, 5.5**
 
----
-
 ### Property 6: Poster invocation uses the correct text and media from the row
 
-*For any* row passed to `postTweetForRow`, the Twitter/X API call SHALL be made with the exact text from column D of that row, and if column B contains a non-`"none"` value, the media URLs parsed from column B SHALL be included in the API call.
+*For any* row passed to `postTweetForRow`, the Twitter/X API call SHALL be made with the exact text from column D, and if column B contains a non-`"none"` value, the media URLs parsed from column B SHALL be included.
 
 **Validates: Requirements 5.1, 5.2**
 
----
-
 ### Property 7: Tweet ID extraction round-trip
 
-*For any* valid Twitter/X URL in the formats `https://twitter.com/{user}/status/{id}` or `https://x.com/{user}/status/{id}` where `{id}` is a numeric string, `extractTweetId(url)` SHALL return the exact numeric ID string that appears in the URL path.
+*For any* valid Twitter/X URL in the formats `https://twitter.com/{user}/status/{id}` or `https://x.com/{user}/status/{id}`, `extractTweetId(url)` SHALL return the exact numeric ID string.
 
 **Validates: Requirements 2.2**
 
----
-
 ### Property 8: Trigger setup is idempotent
 
-*For any* number of consecutive calls to `setupTriggers()`, the total number of triggers installed for `runScheduler` SHALL be exactly one — no duplicate triggers are created.
+*For any* number of consecutive calls to `setupTriggers()`, the total number of triggers installed for `runScheduler` SHALL be exactly one.
 
 **Validates: Requirements 6.3**
 
----
-
 ### Property 9: Malformed cron expressions always produce an error status
 
-*For any* string that is not a valid 5-field cron expression (wrong number of fields, out-of-range values, invalid characters), when the Scheduler encounters it in column E, it SHALL write a value starting with `"error:"` into column C of that row and SHALL NOT invoke the Poster for that row.
+*For any* string that is not a valid 5-field cron expression, when the Scheduler encounters it in column E, it SHALL write a value starting with `"error:"` into column C and SHALL NOT invoke the Poster.
 
 **Validates: Requirements 4.5**
 
----
-
 ### Property 10: API errors are propagated to column C status
 
-*For any* Twitter/X API error response (any HTTP error status or error body), after the Poster attempts to post a tweet, column C of that row SHALL contain a value starting with `"error:"` and SHALL NOT contain `"sent"`.
+*For any* Twitter/X API error response, after the Poster attempts to post, column C SHALL contain a value starting with `"error:"` and SHALL NOT contain `"sent"`.
 
 **Validates: Requirements 5.4**
 
@@ -422,7 +544,7 @@ Stored in `PropertiesService.getScriptProperties()`:
 | API returns HTTP error | `"error: HTTP {status}"` | `"error: unable to extract title"` |
 | API returns no media | `"none"` | tweet text (if available) |
 | API returns no text | tweet media URLs (if any) | `"error: unable to extract title"` |
-| Missing API credentials | `"error: missing credentials"` | `"error: missing credentials"` |
+| Missing API credentials | `"error: auth error: ..."` | `"error: unable to extract title"` |
 
 ### Scheduler / Poster Error Handling
 
@@ -430,88 +552,57 @@ Stored in `PropertiesService.getScriptProperties()`:
 |---|---|
 | Cron expression is malformed | `"error: invalid cron expression"` |
 | Twitter API returns error on post | `"error: {API error message}"` |
-| Missing API credentials | `"error: missing credentials"` |
+| Missing API credentials | `"error: auth error: ..."` |
 | Column D (title) is empty | `"error: no tweet text"` |
+| Max count reached (before posting) | `"sent"` |
+
+### WebApp Error Handling
+
+| Condition | Response |
+|---|---|
+| `tweetLink` is empty or whitespace | `{ success: false, error: "Tweet link is required." }` |
+| `tweetLink` does not match URL pattern | `{ success: false, error: "Tweet link must be a valid twitter.com or x.com status URL." }` |
+| `title` is empty or whitespace | `{ success: false, error: "Tweet text is required." }` |
+| `cronExpression` is empty (cron mode) | `{ success: false, error: "Cron expression is required." }` |
+| `cronExpression` is invalid (cron mode) | `{ success: false, error: "Cron expression is invalid. Use 5-field format: minute hour dom month dow." }` |
+| `postTweetForRow` writes error to col C | `{ success: false, error: <col C value> }` |
+| Any uncaught exception | `{ success: false, error: "Unexpected error: " + e.message }` |
 
 ### General Principles
 
-- All `UrlFetchApp` calls use `muteHttpExceptions: true` so HTTP errors are caught and handled gracefully rather than throwing.
+- All `UrlFetchApp` calls use `muteHttpExceptions: true` so HTTP errors are caught and handled gracefully.
 - Errors are written back to the sheet immediately so the user can see which rows failed.
-- A row with an error in column B is still considered "processed" (column B is non-empty), so the extractor will not retry it automatically. The user must clear column B to trigger a retry.
+- A row with an error in column B is still considered "processed" (column B is non-empty), so the extractor will not retry it. The user must clear column B to trigger a retry.
 - A row with an error in column C is not "sent", so the scheduler will attempt it again on the next trigger run. This is intentional for transient API errors.
+- Media upload failures are non-fatal: the tweet is posted without the failed media, and the error is logged via `Logger.log`.
 
 ---
 
 ## Testing Strategy
 
-### Unit Tests
+### Test Location and Runner
 
-Unit tests are written using [**clasp**](https://github.com/google/clasp) to push code locally and a test runner such as [**gas-local**](https://github.com/mzagorny/gas-local) or plain Node.js with mocked GAS globals.
+Tests live in `tests/unit/` and run via Jest in Node.js with mocked GAS globals (`tests/gasGlobals.js`). Run with:
 
-Focus areas for unit tests:
-- `extractTweetId(url)` — valid URLs, malformed URLs, x.com vs twitter.com variants
-- `parseCronExpression(str)` — valid expressions, invalid expressions, edge cases
-- `matchesCronField(field, value, min, max)` — all field types: `*`, specific value, range, step, list
-- `matchesCronSchedule(parsed, date)` — composite matching across all five fields
-- `buildOAuth1Header(...)` — signature generation against known test vectors
-- `getOrCreateTweetSheet()` — sheet creation when absent, no-op when present
+```bash
+cd tests && npm test
+```
+
+### Unit Test Coverage
+
+| File | Functions tested |
+|---|---|
+| `extractor.test.js` | `extractTweetId`, `processExtractionRow`, `extractResources` |
+| `scheduler.test.js` | `parseCronExpression`, `matchesCronField`, `matchesCronSchedule`, `runScheduler` |
+| `poster.test.js` | `postTweetForRow` |
+| `sheetUtils.test.js` | `getOrCreateTweetSheet`, `getAllRows`, `writeCell` |
+| `twitterClient.test.js` | `buildOAuth1Header`, `getCredentials`, `fetchTweetData`, `postTweet` |
+| `triggerManager.test.js` | `setupTriggers`, `removeTriggers` |
+| `webApp.test.js` | `_validateTweetLink`, `handleFormSubmit`, `handleNewTweet`, `doPost`, HTML structure |
+
+Total: **228 tests**, all passing.
 
 ### Property-Based Tests
 
-Property-based tests use [**fast-check**](https://github.com/dubzzz/fast-check) (JavaScript), run via Node.js with GAS globals mocked. Each test runs a minimum of **100 iterations**.
-
-Each test is tagged with a comment in the format:
+Property-based tests use [**fast-check**](https://github.com/dubzzz/fast-check), run via Jest. Each test runs a minimum of **100 iterations**. Tags use the format:
 `// Feature: tweet-resource-extractor, Property {N}: {property_text}`
-
-**Property 1 — Extractor processes exactly the eligible rows**
-Generate random sheet states (rows with various combinations of empty/non-empty columns A and B). Run `extractResources()` with a mocked API. Assert the set of rows written to equals exactly the set with non-empty A and empty B.
-`// Feature: tweet-resource-extractor, Property 1: extractor writes to exactly the rows with non-empty A and empty B`
-
-**Property 2 — Extractor preserves previously extracted data**
-Generate random sheet states where some rows already have non-empty column B. Run `extractResources()` with a mocked API. Assert all pre-existing column B values are unchanged.
-`// Feature: tweet-resource-extractor, Property 2: extractor never overwrites existing column B values`
-
-**Property 3 — Resource link output round-trips cleanly**
-Generate random arrays of one or more non-empty URL strings. Pass them through the formatting function. Assert splitting the output on `","` and trimming each entry returns the original array.
-`// Feature: tweet-resource-extractor, Property 3: comma-separated resource link output round-trips cleanly`
-
-**Property 4 — Cron field matching is correct for all valid inputs and syntax forms**
-Generate random valid 5-field cron expressions (using `*`, specific values, ranges, steps, lists) and random `Date` values. For each pair, independently compute the expected match result using a reference implementation, then compare against `matchesCronSchedule`. The two results must always agree.
-`// Feature: tweet-resource-extractor, Property 4: matchesCronSchedule agrees with reference for all valid cron/date pairs`
-
-**Property 5 — Scheduler processes exactly the eligible rows and skips sent rows**
-Generate random sheet states with varying column C and E values. Run `runScheduler()` with a mocked poster and fixed time. Assert the poster is called for exactly the rows with non-empty E and non-"sent" C.
-`// Feature: tweet-resource-extractor, Property 5: scheduler evaluates exactly rows with non-empty cron and non-sent status`
-
-**Property 6 — Poster invocation uses the correct text and media from the row**
-Generate random tweet texts and resource link lists. Invoke `postTweetForRow()` with a mocked API. Assert the API was called with the exact text and the correct media URLs.
-`// Feature: tweet-resource-extractor, Property 6: poster calls API with exact text and media from the row`
-
-**Property 7 — Tweet ID extraction round-trip**
-Generate random Twitter/X user handles and numeric tweet IDs. Construct URLs in both `twitter.com` and `x.com` formats. Assert `extractTweetId(url)` returns the original ID string.
-`// Feature: tweet-resource-extractor, Property 7: extractTweetId recovers the exact ID from any valid tweet URL`
-
-**Property 8 — Trigger setup is idempotent**
-Call `setupTriggers()` a random number of times (1–10) with a mocked `ScriptApp`. Assert the total number of triggers for `runScheduler` is always exactly one.
-`// Feature: tweet-resource-extractor, Property 8: setupTriggers never creates duplicate triggers regardless of call count`
-
-**Property 9 — Malformed cron expressions always produce an error status**
-Generate strings that are not valid 5-field cron expressions (wrong field count, out-of-range values, invalid characters). Run the scheduler with these values in column E. Assert column C always gets a value starting with `"error:"` and the poster is never called.
-`// Feature: tweet-resource-extractor, Property 9: malformed cron always writes error to column C and never invokes poster`
-
-**Property 10 — API errors are propagated to column C status**
-Generate random HTTP error status codes and error message strings. Mock the Twitter/X API to return these errors. Invoke the poster. Assert column C always contains a value starting with `"error:"` and never `"sent"`.
-`// Feature: tweet-resource-extractor, Property 10: any API error results in error status in column C, never sent`
-
-### Integration Tests
-
-Integration tests run against the live X API using a dedicated test account and are executed manually or in a separate CI step:
-
-- Verify `fetchTweetData(id)` returns correct text and media URLs for a known tweet
-- Verify `postTweet(text)` successfully creates a tweet and returns an ID
-- Verify the trigger setup/teardown cycle creates and removes exactly one trigger
-
-### Smoke Tests
-
-- Verify all four required credentials are present in `PropertiesService` before any API call
-- Verify the "tweet" sheet exists and has the correct headers after `getOrCreateTweetSheet()` runs

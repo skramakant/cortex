@@ -17,7 +17,7 @@ const {
 } = require('../gasGlobals');
 
 // Path to the GAS source file under test
-const SHEET_UTILS_PATH = path.resolve(__dirname, '../../SheetUtils.gs');
+const SHEET_UTILS_PATH = path.resolve(__dirname, '../../scripts/SheetUtils.gs');
 const sheetUtilsCode = fs.readFileSync(SHEET_UTILS_PATH, 'utf8');
 
 /**
@@ -30,8 +30,8 @@ function loadSheetUtils(gasGlobals) {
   return context;
 }
 
-// ---- Expected headers ----
-const EXPECTED_HEADERS = ['tweet link', 'resource links', 'status', 'title', 'cron expression'];
+// ---- Expected headers (7 columns) ----
+const EXPECTED_HEADERS = ['tweet link', 'resource links', 'status', 'title', 'cron expression', 'max count', 'post count'];
 
 describe('getOrCreateTweetSheet()', () => {
   describe('when a "tweet" sheet already exists', () => {
@@ -89,13 +89,13 @@ describe('getOrCreateTweetSheet()', () => {
       expect(headerRow).toEqual(EXPECTED_HEADERS);
     });
 
-    it('writes headers across exactly 5 columns (A–E)', () => {
+    it('writes headers across exactly 7 columns (A–G)', () => {
       const SpreadsheetApp = createMockSpreadsheetApp(null);
 
       const ctx = loadSheetUtils({ SpreadsheetApp });
       const sheet = ctx.getOrCreateTweetSheet();
 
-      expect(sheet._data[0]).toHaveLength(5);
+      expect(sheet._data[0]).toHaveLength(7);
     });
 
     it('returns the newly created sheet object', () => {
@@ -125,7 +125,7 @@ describe('getAllRows()', () => {
   describe('when the sheet has only a header row', () => {
     it('returns an empty array when only row 1 (header) exists', () => {
       // One row = header only; lastRow is 1, which is < 2
-      const sheet = createMockSheet([['tweet link', 'resource links', 'status', 'title', 'cron expression']]);
+      const sheet = createMockSheet([['tweet link', 'resource links', 'status', 'title', 'cron expression', 'max count', 'post count']]);
       const ctx = loadSheetUtils({ SpreadsheetApp: createMockSpreadsheetApp(sheet) });
       expect(ctx.getAllRows(sheet)).toEqual([]);
     });
@@ -133,26 +133,26 @@ describe('getAllRows()', () => {
 
   describe('when the sheet has data rows', () => {
     it('returns a single data row when there is one row after the header', () => {
-      const header = ['tweet link', 'resource links', 'status', 'title', 'cron expression'];
-      const dataRow = ['https://x.com/1', 'https://img.com/a.jpg', '', 'Hello', '* * * * *'];
+      const header  = ['tweet link', 'resource links', 'status', 'title', 'cron expression', 'max count', 'post count'];
+      const dataRow = ['https://x.com/1', 'https://img.com/a.jpg', '', 'Hello', '* * * * *', 0, 0];
       const sheet = createMockSheet([header, dataRow]);
       const ctx = loadSheetUtils({ SpreadsheetApp: createMockSpreadsheetApp(sheet) });
       expect(ctx.getAllRows(sheet)).toEqual([dataRow]);
     });
 
     it('returns all data rows when there are multiple rows after the header', () => {
-      const header = ['tweet link', 'resource links', 'status', 'title', 'cron expression'];
-      const row1 = ['https://x.com/1', 'https://img.com/a.jpg', '', 'Hello', '* * * * *'];
-      const row2 = ['https://x.com/2', 'none', 'sent', 'World', '0 9 * * 1'];
-      const row3 = ['https://x.com/3', '', '', '', ''];
+      const header = ['tweet link', 'resource links', 'status', 'title', 'cron expression', 'max count', 'post count'];
+      const row1 = ['https://x.com/1', 'https://img.com/a.jpg', '', 'Hello', '* * * * *', 0, 0];
+      const row2 = ['https://x.com/2', 'none', 'sent', 'World', '0 9 * * 1', 3, 3];
+      const row3 = ['https://x.com/3', '', '', '', '', 0, 0];
       const sheet = createMockSheet([header, row1, row2, row3]);
       const ctx = loadSheetUtils({ SpreadsheetApp: createMockSpreadsheetApp(sheet) });
       expect(ctx.getAllRows(sheet)).toEqual([row1, row2, row3]);
     });
 
     it('does not include the header row in the result', () => {
-      const header = ['tweet link', 'resource links', 'status', 'title', 'cron expression'];
-      const dataRow = ['https://x.com/1', '', '', '', ''];
+      const header  = ['tweet link', 'resource links', 'status', 'title', 'cron expression', 'max count', 'post count'];
+      const dataRow = ['https://x.com/1', '', '', '', '', 0, 0];
       const sheet = createMockSheet([header, dataRow]);
       const ctx = loadSheetUtils({ SpreadsheetApp: createMockSpreadsheetApp(sheet) });
       const rows = ctx.getAllRows(sheet);

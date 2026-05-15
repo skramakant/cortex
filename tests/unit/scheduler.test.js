@@ -13,15 +13,24 @@ const vm = require('vm');
 const fs = require('fs');
 const path = require('path');
 
-const SCHEDULER_PATH = path.resolve(__dirname, '../../Scheduler.gs');
+const SCHEDULER_PATH = path.resolve(__dirname, '../../scripts/Scheduler.gs');
 const schedulerCode = fs.readFileSync(SCHEDULER_PATH, 'utf8');
 
 /**
- * Loads Scheduler.gs into a fresh vm context.
+ * Loads Scheduler.gs into a fresh vm context with column constants pre-populated.
+ * The constants are needed so the scheduler code evaluates without ReferenceErrors.
  * Returns the context so tests can call functions defined in it.
  */
 function loadScheduler() {
-  const context = vm.createContext({});
+  const context = vm.createContext({
+    COL_TWEET_LINK:     1,
+    COL_RESOURCE_LINKS: 2,
+    COL_STATUS:         3,
+    COL_TITLE:          4,
+    COL_CRON:           5,
+    COL_MAX_COUNT:      6,
+    COL_POST_COUNT:     7,
+  });
   vm.runInContext(schedulerCode, context);
   return context;
 }
@@ -371,6 +380,8 @@ describe('runScheduler()', () => {
       COL_STATUS:         3,
       COL_TITLE:          4,
       COL_CRON:           5,
+      COL_MAX_COUNT:      6,
+      COL_POST_COUNT:     7,
 
       // Mocked GAS helpers
       getOrCreateTweetSheet: () => mockSheet,
@@ -390,9 +401,9 @@ describe('runScheduler()', () => {
     return { ctx: context, mockSheet, writeCellCalls, postTweetForRowCalls };
   }
 
-  // Helper: build a row array [tweetLink, resourceLinks, status, title, cronExpr]
+  // Helper: build a row array [tweetLink, resourceLinks, status, title, cronExpr, maxCount, postCount]
   function makeRow(cronExpr, status = '', title = 'Hello', resourceLinks = 'none') {
-    return ['http://tweet', resourceLinks, status, title, cronExpr];
+    return ['http://tweet', resourceLinks, status, title, cronExpr, 0, 0];
   }
 
   // A cron expression that matches the fixed `now` (2024-01-01 09:00, Monday)
@@ -462,7 +473,8 @@ describe('runScheduler()', () => {
     expect(postTweetForRowCalls[0].rowIndex).toBe(2);
     expect(postTweetForRowCalls[0].title).toBe('My Tweet');
     expect(postTweetForRowCalls[0].resourceLinks).toBe('http://img.png');
-    expect(writeCellCalls).toHaveLength(0);
+    // Scheduler increments post count after posting (COL_POST_COUNT write)
+    expect(writeCellCalls.some(c => c.colIndex === 7)).toBe(true);
   });
 
   // -------------------------------------------------------------------------
@@ -492,9 +504,10 @@ describe('runScheduler()', () => {
     });
     ctx.runScheduler();
     // Only one error write (row 4)
-    expect(writeCellCalls).toHaveLength(1);
-    expect(writeCellCalls[0].rowIndex).toBe(4);
-    expect(writeCellCalls[0].value).toBe('error: invalid cron expression');
+    const errorWrites = writeCellCalls.filter(c => String(c.value).startsWith('error:'));
+    expect(errorWrites).toHaveLength(1);
+    expect(errorWrites[0].rowIndex).toBe(4);
+    expect(errorWrites[0].value).toBe('error: invalid cron expression');
     // Only one post (row 6)
     expect(postTweetForRowCalls).toHaveLength(1);
     expect(postTweetForRowCalls[0].rowIndex).toBe(6);

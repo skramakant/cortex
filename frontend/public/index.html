@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tweet Scheduler</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body class="bg-gray-100 min-h-screen font-sans text-gray-800 py-8 px-4">
+
+  <div class="max-w-2xl mx-auto">
+
+    <!-- Header -->
+    <div class="flex items-center gap-3 mb-6">
+      <svg class="w-7 h-7 text-blue-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+      </svg>
+      <h1 class="text-2xl font-semibold text-gray-900">Tweet Scheduler</h1>
+    </div>
+
+    <!-- Tab bar -->
+    <div class="flex border-b border-gray-200 mb-0">
+      <button
+        id="tabCloneBtn"
+        class="px-5 py-3 text-sm border-b-2 border-blue-500 text-blue-500 font-semibold focus:outline-none"
+      >
+        Clone Tweet
+      </button>
+      <button
+        id="tabNewBtn"
+        class="px-5 py-3 text-sm text-gray-500 focus:outline-none"
+      >
+        New Tweet
+      </button>
+    </div>
+
+    <!-- Card wrapper -->
+    <div class="bg-white rounded-b-xl rounded-tr-xl shadow-sm border border-t-0 border-gray-200 p-6">
+
+      <!-- ===== CLONE TWEET TAB ===== -->
+      <div id="tabClone">
+
+        <!-- Step 1: Fetch panel -->
+        <div id="cloneFetchPanel">
+          <div class="mb-4">
+            <label for="cloneTweetLink" class="block text-sm font-medium text-gray-700 mb-1">
+              Tweet Link
+            </label>
+            <input
+              type="text"
+              id="cloneTweetLink"
+              placeholder="https://x.com/user/status/…"
+              autocomplete="off"
+              class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+            >
+          </div>
+
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Schedule Mode</label>
+            <div class="flex gap-6">
+              <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input type="radio" name="cloneSchedule" value="now" checked class="accent-blue-500"> Send Now
+              </label>
+              <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input type="radio" name="cloneSchedule" value="cron" class="accent-blue-500"> Schedule with Cron
+              </label>
+            </div>
+          </div>
+
+          <div id="cloneCronGroup" class="hidden mb-4 pl-1">
+            <label for="cloneCron" class="block text-sm font-medium text-gray-700 mb-1">
+              Cron Expression
+            </label>
+            <input
+              type="text"
+              id="cloneCron"
+              placeholder="e.g. 0 9 * * 1"
+              autocomplete="off"
+              class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+            >
+            <p class="mt-1 text-xs text-gray-400">Format: minute hour dom month dow</p>
+
+            <div class="mt-3">
+              <label for="cloneMaxCount" class="block text-sm font-medium text-gray-700 mb-1">
+                Max Posts <span class="font-normal text-gray-400">(0 = unlimited)</span>
+              </label>
+              <input
+                type="text"
+                id="cloneMaxCount"
+                placeholder="e.g. 5"
+                autocomplete="off"
+                class="w-28 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+              >
+            </div>
+          </div>
+
+          <button
+            id="cloneFetchBtn"
+            class="w-full py-2.5 text-sm font-semibold text-white bg-blue-500 rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors"
+          >
+            Fetch Tweet
+          </button>
+        </div>
+
+        <!-- Loading indicator -->
+        <p id="cloneLoading" class="hidden mt-4 text-sm text-gray-500 text-center">Loading…</p>
+
+        <!-- Step 2: Preview + edit panel -->
+        <div id="clonePreviewPanel" class="hidden">
+          <hr class="my-5 border-gray-100">
+          <h2 class="text-base font-semibold text-gray-800 mb-4">Tweet Preview</h2>
+
+          <div class="mb-4">
+            <label for="cloneEditTitle" class="block text-sm font-medium text-gray-700 mb-1">
+              Tweet Text <span class="font-normal text-gray-400">(editable)</span>
+            </label>
+            <textarea
+              id="cloneEditTitle"
+              rows="4"
+              class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-y focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+            ></textarea>
+            <p id="cloneCharCount" class="text-right text-xs text-gray-400 mt-1">0 / 280</p>
+          </div>
+
+          <div id="cloneMediaSection" class="hidden mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Media</label>
+            <div id="cloneMediaPreview" class="flex flex-wrap gap-2 mb-2"></div>
+            <div id="cloneMediaUrls" class="space-y-1"></div>
+          </div>
+
+          <div class="flex gap-3 mt-2">
+            <button
+              id="cloneBackBtn"
+              class="flex-1 py-2.5 text-sm font-semibold text-blue-500 bg-white border border-blue-500 rounded-md hover:bg-blue-50 transition-colors"
+            >
+              Back
+            </button>
+            <button
+              id="cloneSubmitBtn"
+              class="flex-1 py-2.5 text-sm font-semibold text-white bg-blue-500 rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors"
+            >
+              Post Tweet
+            </button>
+          </div>
+        </div>
+
+        <!-- Feedback -->
+        <div id="cloneFeedback" class="hidden"></div>
+      </div>
+
+      <!-- ===== NEW TWEET TAB ===== -->
+      <div id="tabNew" class="hidden">
+
+        <div class="mb-4">
+          <label for="newTitle" class="block text-sm font-medium text-gray-700 mb-1">
+            Tweet Text
+          </label>
+          <textarea
+            id="newTitle"
+            rows="4"
+            placeholder="What's happening?"
+            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-y focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+          ></textarea>
+          <p id="newCharCount" class="text-right text-xs text-gray-400 mt-1">0 / 280</p>
+        </div>
+
+        <div class="mb-4">
+          <label for="newResourceLink" class="block text-sm font-medium text-gray-700 mb-1">
+            Resource Link <span class="font-normal text-gray-400">(optional — image or video URL)</span>
+          </label>
+          <input
+            type="text"
+            id="newResourceLink"
+            placeholder="https://example.com/image.jpg"
+            autocomplete="off"
+            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+          >
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-2">Schedule Mode</label>
+          <div class="flex gap-6">
+            <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+              <input type="radio" name="newSchedule" value="now" checked class="accent-blue-500"> Send Now
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+              <input type="radio" name="newSchedule" value="cron" class="accent-blue-500"> Schedule with Cron
+            </label>
+          </div>
+        </div>
+
+        <div id="newCronGroup" class="hidden mb-4 pl-1">
+          <label for="newCron" class="block text-sm font-medium text-gray-700 mb-1">
+            Cron Expression
+          </label>
+          <input
+            type="text"
+            id="newCron"
+            placeholder="e.g. 0 9 * * 1"
+            autocomplete="off"
+            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+          >
+          <p class="mt-1 text-xs text-gray-400">Format: minute hour dom month dow</p>
+
+          <div class="mt-3">
+            <label for="newMaxCount" class="block text-sm font-medium text-gray-700 mb-1">
+              Max Posts <span class="font-normal text-gray-400">(0 = unlimited)</span>
+            </label>
+            <input
+              type="text"
+              id="newMaxCount"
+              placeholder="e.g. 5"
+              autocomplete="off"
+              class="w-28 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+            >
+          </div>
+        </div>
+
+        <button
+          id="newSubmitBtn"
+          class="w-full py-2.5 text-sm font-semibold text-white bg-blue-500 rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors"
+        >
+          Post Tweet
+        </button>
+
+        <p id="newLoading" class="hidden mt-4 text-sm text-gray-500 text-center">Loading…</p>
+        <div id="newFeedback" class="hidden"></div>
+      </div>
+
+    </div><!-- /card -->
+
+    <!-- Footer -->
+    <p class="text-center text-xs text-gray-400 mt-6">
+      Powered by Google Apps Script &amp; Google Sheets
+    </p>
+
+  </div><!-- /container -->
+
+  <script src="js/utils.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

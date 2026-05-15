@@ -20,7 +20,7 @@ const {
 } = require('../gasGlobals');
 
 // Path to the GAS source file under test
-const TWITTER_CLIENT_PATH = path.resolve(__dirname, '../../TwitterClient.gs');
+const TWITTER_CLIENT_PATH = path.resolve(__dirname, '../../scripts/TwitterClient.gs');
 const twitterClientCode = fs.readFileSync(TWITTER_CLIENT_PATH, 'utf8');
 
 /**
@@ -52,7 +52,7 @@ describe('buildOAuth1Header()', () => {
 
     beforeEach(() => {
       ctx = loadTwitterClient(VALID_CREDENTIALS);
-      header = ctx.buildOAuth1Header('GET', 'https://api.twitter.com/2/tweets/123', { 'tweet.fields': 'text' });
+      header = ctx.buildOAuth1Header('GET', 'https://api.x.com/2/tweets/123', { 'tweet.fields': 'text' });
     });
 
     it('returns a string starting with "OAuth "', () => {
@@ -112,7 +112,7 @@ describe('buildOAuth1Header()', () => {
       delete props.TWITTER_API_KEY;
       const ctx = loadTwitterClient(props);
 
-      expect(() => ctx.buildOAuth1Header('GET', 'https://api.twitter.com/2/tweets/123', {})).toThrow();
+      expect(() => ctx.buildOAuth1Header('GET', 'https://api.x.com/2/tweets/123', {})).toThrow();
     });
 
     it('throws when TWITTER_API_SECRET is missing', () => {
@@ -120,7 +120,7 @@ describe('buildOAuth1Header()', () => {
       delete props.TWITTER_API_SECRET;
       const ctx = loadTwitterClient(props);
 
-      expect(() => ctx.buildOAuth1Header('GET', 'https://api.twitter.com/2/tweets/123', {})).toThrow();
+      expect(() => ctx.buildOAuth1Header('GET', 'https://api.x.com/2/tweets/123', {})).toThrow();
     });
 
     it('throws when TWITTER_ACCESS_TOKEN is missing', () => {
@@ -128,7 +128,7 @@ describe('buildOAuth1Header()', () => {
       delete props.TWITTER_ACCESS_TOKEN;
       const ctx = loadTwitterClient(props);
 
-      expect(() => ctx.buildOAuth1Header('GET', 'https://api.twitter.com/2/tweets/123', {})).toThrow();
+      expect(() => ctx.buildOAuth1Header('GET', 'https://api.x.com/2/tweets/123', {})).toThrow();
     });
 
     it('throws when TWITTER_ACCESS_TOKEN_SECRET is missing', () => {
@@ -136,7 +136,7 @@ describe('buildOAuth1Header()', () => {
       delete props.TWITTER_ACCESS_TOKEN_SECRET;
       const ctx = loadTwitterClient(props);
 
-      expect(() => ctx.buildOAuth1Header('GET', 'https://api.twitter.com/2/tweets/123', {})).toThrow();
+      expect(() => ctx.buildOAuth1Header('GET', 'https://api.x.com/2/tweets/123', {})).toThrow();
     });
 
     it('throws with a descriptive message when credentials are missing', () => {
@@ -144,7 +144,7 @@ describe('buildOAuth1Header()', () => {
       delete props.TWITTER_API_KEY;
       const ctx = loadTwitterClient(props);
 
-      expect(() => ctx.buildOAuth1Header('GET', 'https://api.twitter.com/2/tweets/123', {}))
+      expect(() => ctx.buildOAuth1Header('GET', 'https://api.x.com/2/tweets/123', {}))
         .toThrow('Missing Twitter API credentials');
     });
   });
@@ -152,13 +152,13 @@ describe('buildOAuth1Header()', () => {
   describe('with different HTTP methods', () => {
     it('works with POST method', () => {
       const ctx = loadTwitterClient(VALID_CREDENTIALS);
-      const header = ctx.buildOAuth1Header('POST', 'https://api.twitter.com/2/tweets', {});
+      const header = ctx.buildOAuth1Header('POST', 'https://api.x.com/2/tweets', {});
       expect(header).toMatch(/^OAuth /);
     });
 
     it('works with lowercase method (normalizes to uppercase)', () => {
       const ctx = loadTwitterClient(VALID_CREDENTIALS);
-      const header = ctx.buildOAuth1Header('get', 'https://api.twitter.com/2/tweets/123', {});
+      const header = ctx.buildOAuth1Header('get', 'https://api.x.com/2/tweets/123', {});
       expect(header).toMatch(/^OAuth /);
     });
   });
@@ -166,20 +166,20 @@ describe('buildOAuth1Header()', () => {
   describe('with null or empty params', () => {
     it('works when params is null', () => {
       const ctx = loadTwitterClient(VALID_CREDENTIALS);
-      const header = ctx.buildOAuth1Header('GET', 'https://api.twitter.com/2/tweets/123', null);
+      const header = ctx.buildOAuth1Header('GET', 'https://api.x.com/2/tweets/123', null);
       expect(header).toMatch(/^OAuth /);
     });
 
     it('works when params is an empty object', () => {
       const ctx = loadTwitterClient(VALID_CREDENTIALS);
-      const header = ctx.buildOAuth1Header('GET', 'https://api.twitter.com/2/tweets/123', {});
+      const header = ctx.buildOAuth1Header('GET', 'https://api.x.com/2/tweets/123', {});
       expect(header).toMatch(/^OAuth /);
     });
   });
 });
 
 describe('fetchTweetData()', () => {
-  const TWEET_API_BASE = 'https://api.twitter.com/2/tweets/';
+  const TWEET_API_BASE = 'https://api.x.com/2/tweets/';
 
   /**
    * Builds a mock UrlFetchApp that returns the given status and body for any URL.
@@ -418,7 +418,7 @@ describe('postTweet()', () => {
       expect(result).toEqual({ id: '9876543210' });
     });
 
-    it('calls POST https://api.twitter.com/2/tweets', () => {
+    it('calls POST https://api.x.com/2/tweets', () => {
       let capturedUrl = null;
       let capturedOptions = null;
       const fetchApp = createMockUrlFetchApp({
@@ -434,7 +434,7 @@ describe('postTweet()', () => {
       const ctx = loadWithFetch(fetchApp);
       ctx.postTweet('Test tweet', []);
 
-      expect(capturedUrl).toBe('https://api.twitter.com/2/tweets');
+      expect(capturedUrl).toBe('https://api.x.com/2/tweets');
       expect(capturedOptions.method).toBe('POST');
     });
 

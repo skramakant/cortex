@@ -1,0 +1,23 @@
+{
+  "name": "tweetgen-tests",
+  "version": "1.0.0",
+  "description": "Unit and property-based tests for the Tweet Scheduler GAS backend",
+  "private": true,
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test:unit": "node --experimental-vm-modules node_modules/.bin/jest --testPathPattern='unit'"
+  },
+  "devDependencies": {
+    "fast-check": "3.15.0",
+    "jest": "29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/*.test.js"
+    ],
+    "roots": [
+      "<rootDir>/unit"
+    ]
+  }
+}

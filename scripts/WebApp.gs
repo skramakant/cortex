@@ -1,33 +1,41 @@
 /**
  * WebApp.gs
- * Google Apps Script Web App entry points and form submission handler.
- * Serves the Tweet Scheduler HTML form and processes tweet link submissions.
+ * Google Apps Script HTTP handler.
+ *
+ * The frontend is now hosted on GitHub Pages — doGet() is no longer used.
+ * All requests come in as POST from the static frontend via fetch().
+ *
+ * Routing is action-based:
+ *   { action: 'fetchPreview', tweetUrl }          → fetchTweetPreview()
+ *   { action: 'submitTweet',  ...cloneParams }    → handleFormSubmit()
+ *   { action: 'newTweet',     ...newTweetParams } → handleNewTweet()
  */
 
 /**
- * Serves the Tweet Scheduler HTML page.
- * @param {Object} e  The event object (unused).
- * @returns {GoogleAppsScript.HTML.HtmlOutput}
- */
-function doGet(e) {
-  return HtmlService.createTemplateFromFile('Index')
-    .evaluate()
-    .setTitle('Tweet Scheduler');
-}
-
-/**
- * Handles HTTP POST requests from external clients.
- * Reads form parameters and delegates to handleFormSubmit().
- * @param {Object} e  The POST event object with e.parameter.
- * @returns {GoogleAppsScript.Content.TextOutput}  JSON response.
+ * HTTP POST handler — entry point for all frontend API calls.
+ * Parses the JSON body, routes by action, and returns a JSON response.
+ * @param {Object} e  The POST event object.
+ * @returns {GoogleAppsScript.Content.TextOutput}
  */
 function doPost(e) {
-  var params = {
-    tweetLink:      e.parameter.tweetLink,
-    scheduleMode:   e.parameter.scheduleMode,
-    cronExpression: e.parameter.cronExpression
-  };
-  var result = handleFormSubmit(params);
+  var result;
+  try {
+    var params = JSON.parse(e.postData.contents);
+    var action = params.action;
+
+    if (action === 'fetchPreview') {
+      result = fetchTweetPreview(params.tweetUrl);
+    } else if (action === 'submitTweet') {
+      result = handleFormSubmit(params);
+    } else if (action === 'newTweet') {
+      result = handleNewTweet(params);
+    } else {
+      result = { success: false, error: 'Unknown action: ' + action };
+    }
+  } catch (err) {
+    result = { success: false, error: 'Server error: ' + err.message };
+  }
+
   return ContentService
     .createTextOutput(JSON.stringify(result))
     .setMimeType(ContentService.MimeType.JSON);
@@ -35,7 +43,7 @@ function doPost(e) {
 
 /**
  * Validates a tweet URL.
- * @param {string} url  The URL to validate.
+ * @param {string} url
  * @returns {string|null}  null if valid; an error string if invalid.
  */
 function _validateTweetLink(url) {
@@ -60,8 +68,6 @@ function _getNewRowIndex(sheet) {
 
 /**
  * Fetches tweet data for preview without writing to the sheet.
- * Called from the client before the user confirms submission.
- *
  * @param {string} tweetUrl
  * @returns {{ success: boolean, text?: string, mediaUrls?: string[], error?: string }}
  */
@@ -93,10 +99,10 @@ function fetchTweetPreview(tweetUrl) {
 }
 
 /**
- * Main form submission handler. Validates inputs, writes a new row to the
- * tweet sheet, and (for "Send Now") posts using the user-edited title.
+ * Handles submission of a cloned tweet (from an existing tweet URL).
+ * Validates inputs, writes a new row, and posts immediately or schedules.
  *
- * @param {{ tweetLink: string, scheduleMode: string, title: string, resourceLinks: string, cronExpression?: string }} params
+ * @param {{ tweetLink: string, scheduleMode: string, title: string, resourceLinks: string, cronExpression?: string, maxCount?: number }} params
  * @returns {{ success: boolean, message?: string, error?: string }}
  */
 function handleFormSubmit(params) {
@@ -108,18 +114,18 @@ function handleFormSubmit(params) {
     var resourceLinks  = params.resourceLinks || '';
     var maxCount       = parseInt(params.maxCount, 10) || 0;
 
-    // --- Validate tweet link ---
+    // Validate tweet link
     var linkError = _validateTweetLink(tweetLink);
     if (linkError) {
       return { success: false, error: linkError };
     }
 
-    // --- Validate title ---
+    // Validate title
     if (!title || !title.trim()) {
       return { success: false, error: 'Tweet text is required.' };
     }
 
-    // --- Validate cron expression (only in cron mode) ---
+    // Validate cron expression (cron mode only)
     if (scheduleMode === 'cron') {
       if (!cronExpression || !cronExpression.trim()) {
         return { success: false, error: 'Cron expression is required.' };
@@ -133,7 +139,7 @@ function handleFormSubmit(params) {
       }
     }
 
-    // --- Write new row to sheet ---
+    // Write new row to sheet
     var sheet    = getOrCreateTweetSheet();
     var rowIndex = _getNewRowIndex(sheet);
 
@@ -143,14 +149,9 @@ function handleFormSubmit(params) {
     writeCell(sheet, rowIndex, COL_TITLE,          title);
     writeCell(sheet, rowIndex, COL_MAX_COUNT,      maxCount);
     writeCell(sheet, rowIndex, COL_POST_COUNT,     0);
+    writeCell(sheet, rowIndex, COL_CRON,           scheduleMode === 'cron' ? cronExpression : '');
 
-    if (scheduleMode === 'now') {
-      writeCell(sheet, rowIndex, COL_CRON, '');
-    } else if (scheduleMode === 'cron') {
-      writeCell(sheet, rowIndex, COL_CRON, cronExpression);
-    }
-
-    // --- Send Now: post using the user-edited title ---
+    // Send Now: post immediately
     if (scheduleMode === 'now') {
       postTweetForRow(sheet, rowIndex, title, resourceLinks);
 
@@ -158,17 +159,11 @@ function handleFormSubmit(params) {
       if (String(colCValue).indexOf('error:') === 0) {
         return { success: false, error: colCValue };
       }
-
       return { success: true, message: 'Tweet sent successfully.' };
     }
 
-    // --- Cron mode: row written, scheduler will handle posting ---
-    if (scheduleMode === 'cron') {
-      return { success: true, message: 'Tweet scheduled successfully.' };
-    }
-
-    // Fallback (unknown scheduleMode)
-    return { success: false, error: 'Unknown schedule mode: ' + scheduleMode };
+    // Cron mode: row written, scheduler will handle posting
+    return { success: true, message: 'Tweet scheduled successfully.' };
 
   } catch (e) {
     return { success: false, error: 'Unexpected error: ' + e.message };
@@ -176,9 +171,9 @@ function handleFormSubmit(params) {
 }
 
 /**
- * Handles submission of a brand-new tweet (not cloned from an existing one).
+ * Handles submission of a brand-new tweet (no source URL).
  *
- * @param {{ title: string, resourceLinks: string, scheduleMode: string, cronExpression?: string }} params
+ * @param {{ title: string, resourceLinks: string, scheduleMode: string, cronExpression?: string, maxCount?: number }} params
  * @returns {{ success: boolean, message?: string, error?: string }}
  */
 function handleNewTweet(params) {
@@ -189,12 +184,12 @@ function handleNewTweet(params) {
     var cronExpression = params.cronExpression;
     var maxCount       = parseInt(params.maxCount, 10) || 0;
 
-    // --- Validate title ---
+    // Validate title
     if (!title || !title.trim()) {
       return { success: false, error: 'Tweet text is required.' };
     }
 
-    // --- Validate cron expression (only in cron mode) ---
+    // Validate cron expression (cron mode only)
     if (scheduleMode === 'cron') {
       if (!cronExpression || !cronExpression.trim()) {
         return { success: false, error: 'Cron expression is required.' };
@@ -208,7 +203,7 @@ function handleNewTweet(params) {
       }
     }
 
-    // --- Write new row to sheet ---
+    // Write new row to sheet
     var sheet    = getOrCreateTweetSheet();
     var rowIndex = _getNewRowIndex(sheet);
 
@@ -218,14 +213,9 @@ function handleNewTweet(params) {
     writeCell(sheet, rowIndex, COL_TITLE,          title);
     writeCell(sheet, rowIndex, COL_MAX_COUNT,      maxCount);
     writeCell(sheet, rowIndex, COL_POST_COUNT,     0);
+    writeCell(sheet, rowIndex, COL_CRON,           scheduleMode === 'cron' ? cronExpression : '');
 
-    if (scheduleMode === 'now') {
-      writeCell(sheet, rowIndex, COL_CRON, '');
-    } else if (scheduleMode === 'cron') {
-      writeCell(sheet, rowIndex, COL_CRON, cronExpression);
-    }
-
-    // --- Send Now: post immediately ---
+    // Send Now: post immediately
     if (scheduleMode === 'now') {
       postTweetForRow(sheet, rowIndex, title, resourceLinks);
 
@@ -233,33 +223,26 @@ function handleNewTweet(params) {
       if (String(colCValue).indexOf('error:') === 0) {
         return { success: false, error: colCValue };
       }
-
       return { success: true, message: 'Tweet sent successfully.' };
     }
 
-    // --- Cron mode: row written, scheduler will handle posting ---
-    if (scheduleMode === 'cron') {
-      return { success: true, message: 'Tweet scheduled successfully.' };
-    }
-
-    return { success: false, error: 'Unknown schedule mode: ' + scheduleMode };
+    // Cron mode: row written, scheduler will handle posting
+    return { success: true, message: 'Tweet scheduled successfully.' };
 
   } catch (e) {
     return { success: false, error: 'Unexpected error: ' + e.message };
   }
 }
 
-
 /**
- * Diagnostic function — run this directly from the Apps Script editor
- * to verify credentials and sheet access before using the web app.
- * Check the Execution Log for results.
+ * Diagnostic function — run from the Apps Script editor to verify
+ * credentials and sheet access. Check the Execution Log for results.
  */
 function diagnoseCreds() {
-  // 1. Check Script Properties
   var props = PropertiesService.getScriptProperties();
-  var keys = ['TWITTER_API_KEY', 'TWITTER_API_SECRET', 'TWITTER_ACCESS_TOKEN', 'TWITTER_ACCESS_TOKEN_SECRET'];
+  var keys  = ['TWITTER_API_KEY', 'TWITTER_API_SECRET', 'TWITTER_ACCESS_TOKEN', 'TWITTER_ACCESS_TOKEN_SECRET'];
   var missing = [];
+
   for (var i = 0; i < keys.length; i++) {
     var val = props.getProperty(keys[i]);
     if (!val) {
@@ -275,7 +258,6 @@ function diagnoseCreds() {
     return;
   }
 
-  // 2. Check sheet access
   try {
     var sheet = getOrCreateTweetSheet();
     Logger.log('OK: Sheet found/created: ' + sheet.getName());
@@ -284,9 +266,8 @@ function diagnoseCreds() {
     return;
   }
 
-  // 3. Try a test API call (fetch tweet data without posting)
   try {
-    var result = fetchTweetData('20'); // Twitter's first ever tweet ID
+    var result = fetchTweetData('20');
     if (result.error) {
       Logger.log('API ERROR: ' + result.error);
     } else {
@@ -295,27 +276,4 @@ function diagnoseCreds() {
   } catch (e) {
     Logger.log('ERROR: API call threw: ' + e.message);
   }
-
-  // 4. Test buildOAuth1Header directly
-  try {
-    var header = buildOAuth1Header('GET', 'https://api.twitter.com/2/tweets/20', {});
-    Logger.log('OK: OAuth header built: ' + header.substring(0, 40) + '...');
-  } catch (e) {
-    Logger.log('ERROR: buildOAuth1Header threw: ' + e.message);
-  }
-}
-
-/**
- * TEMPORARY — Run once to set credentials, then delete this function.
- * Replace the placeholder values with your actual Twitter/X API credentials.
- */
-function setCredentials() {
-  var props = PropertiesService.getScriptProperties();
-  props.setProperties({
-    'TWITTER_API_KEY':             'PASTE_YOUR_API_KEY_HERE',
-    'TWITTER_API_SECRET':          'PASTE_YOUR_API_SECRET_HERE',
-    'TWITTER_ACCESS_TOKEN':        'PASTE_YOUR_ACCESS_TOKEN_HERE',
-    'TWITTER_ACCESS_TOKEN_SECRET': 'PASTE_YOUR_ACCESS_TOKEN_SECRET_HERE'
-  });
-  Logger.log('Credentials saved. Run diagnoseCreds() to verify.');
 }

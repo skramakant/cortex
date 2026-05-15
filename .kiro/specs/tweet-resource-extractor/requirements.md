@@ -2,7 +2,7 @@
 
 ## Introduction
 
-A Google Apps Script that integrates with a Google Sheet named "tweet" to automate two workflows: (1) extracting media resources (images and videos) and text content from tweet URLs, and (2) scheduling and posting tweets at user-defined times using cron expressions. The script reads tweet links entered by the user, fetches associated resources and titles, and posts tweets on schedule while tracking status in the sheet.
+A Google Apps Script that integrates with a Google Sheet named "tweet" to automate two workflows: (1) extracting media resources (images and videos) and text content from tweet URLs, and (2) scheduling and posting tweets at user-defined times using cron expressions. The script reads tweet links entered by the user, fetches associated resources and titles, and posts tweets on schedule while tracking status and post counts in the sheet.
 
 ## Glossary
 
@@ -11,8 +11,10 @@ A Google Apps Script that integrates with a Google Sheet named "tweet" to automa
 - **Tweet_Link**: A URL pointing to a tweet on Twitter/X (column A)
 - **Resource_Links**: A comma-separated list of image and/or video URLs extracted from a tweet (column B)
 - **Status**: A text field indicating the posting state of a row — blank (not yet posted) or "sent" (column C)
-- **Title**: The text content scraped from the tweet (column D)
+- **Title**: The text content of the tweet to post (column D)
 - **Cron_Expression**: A cron-format string entered by the user to schedule tweet posting (column E)
+- **Max_Count**: The maximum number of times a scheduled tweet should be posted; 0 means unlimited (column F)
+- **Post_Count**: The number of times a scheduled tweet has been posted so far (column G)
 - **Extractor**: The component of the Script responsible for fetching resource links and title from a Tweet_Link
 - **Scheduler**: The component of the Script responsible for evaluating Cron_Expressions and triggering tweet posting
 - **Poster**: The component of the Script responsible for posting tweets via the Twitter/X API
@@ -26,8 +28,8 @@ A Google Apps Script that integrates with a Google Sheet named "tweet" to automa
 #### Acceptance Criteria
 
 1. WHEN the Script is run for the first time, THE Script SHALL verify that a sheet named "tweet" exists in the active Google Spreadsheet.
-2. IF no sheet named "tweet" exists, THEN THE Script SHALL create a sheet named "tweet" with the following column headers in row 1: "tweet link", "resource links", "status", "title", "cron expression".
-3. THE Sheet SHALL maintain columns in the fixed order: A (tweet link), B (resource links), C (status), D (title), E (cron expression).
+2. IF no sheet named "tweet" exists, THEN THE Script SHALL create a sheet named "tweet" with the following column headers in row 1: "tweet link", "resource links", "status", "title", "cron expression", "max count", "post count".
+3. THE Sheet SHALL maintain columns in the fixed order: A (tweet link), B (resource links), C (status), D (title), E (cron expression), F (max count), G (post count).
 
 ---
 
@@ -74,6 +76,19 @@ A Google Apps Script that integrates with a Google Sheet named "tweet" to automa
 
 ---
 
+### Requirement 4a: Repeat Posting with Max Count
+
+**User Story:** As a user, I want to limit how many times a scheduled tweet is posted, so that recurring tweets stop automatically after a set number of posts.
+
+#### Acceptance Criteria
+
+1. WHEN a row has a non-zero value in column F (max count), THE Scheduler SHALL not invoke the Poster for that row if column G (post count) is already greater than or equal to column F.
+2. WHEN the Scheduler skips a row because max count has been reached, THE Scheduler SHALL write "sent" into column C (status) of that row.
+3. WHEN the Poster successfully posts a tweet for a scheduled row, THE Scheduler SHALL increment column G (post count) by 1.
+4. WHEN column F (max count) is 0, THE Scheduler SHALL treat the row as having unlimited posts and SHALL NOT enforce any post count limit.
+
+---
+
 ### Requirement 5: Tweet Posting
 
 **User Story:** As a user, I want the script to post tweets on my behalf using the Twitter/X API, so that scheduled content is published automatically.
@@ -81,7 +96,7 @@ A Google Apps Script that integrates with a Google Sheet named "tweet" to automa
 #### Acceptance Criteria
 
 1. WHEN the Poster is invoked for a row, THE Poster SHALL post the content from column D (title) as a tweet via the Twitter/X API.
-2. WHERE resource links are present in column B and are not "none", THE Poster SHALL attach the media resources to the tweet when posting.
+2. WHERE resource links are present in column B and are not "none", THE Poster SHALL attempt to upload and attach the media resources to the tweet when posting.
 3. WHEN a tweet is successfully posted, THE Poster SHALL write "sent" into column C (status) of that row.
 4. IF the Twitter/X API returns an error, THEN THE Poster SHALL write "error: [API error message]" into column C (status) of that row.
 5. THE Poster SHALL not post a tweet for any row where column C (status) is already "sent".
@@ -111,3 +126,4 @@ A Google Apps Script that integrates with a Google Sheet named "tweet" to automa
 2. THE Script SHALL expose a function named `runScheduler` that triggers the Scheduler for all eligible rows.
 3. THE Script SHALL expose a function named `setupTriggers` that installs the recurring time-based trigger.
 4. THE Script SHALL expose a function named `removeTriggers` that removes all installed triggers.
+5. THE Script SHALL expose a function named `diagnoseCreds` that verifies all four Twitter/X API credentials are present in Script Properties and logs the result to the Execution Log.

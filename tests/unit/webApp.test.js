@@ -17,10 +17,10 @@ const path = require('path');
 const { createMockSheet } = require('../gasGlobals.js');
 
 // ---- Paths ----
-const CONSTANTS_PATH  = path.resolve(__dirname, '../../Constants.gs');
-const SCHEDULER_PATH  = path.resolve(__dirname, '../../Scheduler.gs');
-const WEBAPP_PATH     = path.resolve(__dirname, '../../WebApp.gs');
-const WEBAPP_HTML     = path.resolve(__dirname, '../../Index.html');
+const CONSTANTS_PATH  = path.resolve(__dirname, '../../scripts/Constants.gs');
+const SCHEDULER_PATH  = path.resolve(__dirname, '../../scripts/Scheduler.gs');
+const WEBAPP_PATH     = path.resolve(__dirname, '../../scripts/WebApp.gs');
+const WEBAPP_HTML     = path.resolve(__dirname, '../../frontend/public/index.html');
 
 const constantsCode  = fs.readFileSync(CONSTANTS_PATH,  'utf8');
 const schedulerCode  = fs.readFileSync(SCHEDULER_PATH,  'utf8');
@@ -182,6 +182,7 @@ describe('handleFormSubmit() — validation', () => {
   it('returns { success: false, error: "Cron expression is required." } for cron mode with empty cron', () => {
     const result = ctx.handleFormSubmit({
       tweetLink: 'https://twitter.com/user/status/1234567890',
+      title: 'Some tweet text',
       scheduleMode: 'cron',
       cronExpression: ''
     });
@@ -191,6 +192,7 @@ describe('handleFormSubmit() — validation', () => {
   it('returns { success: false, error containing "invalid" } for cron mode with invalid cron', () => {
     const result = ctx.handleFormSubmit({
       tweetLink: 'https://twitter.com/user/status/1234567890',
+      title: 'Some tweet text',
       scheduleMode: 'cron',
       cronExpression: 'not-a-cron'
     });
@@ -206,59 +208,49 @@ describe('handleFormSubmit() — validation', () => {
 describe('handleFormSubmit() — Send Now flow', () => {
   const VALID_URL = 'https://twitter.com/user/status/1234567890';
 
-  it('returns { success: true, message: "Tweet sent successfully." } when extraction and post succeed', () => {
+  it('returns { success: true, message: "Tweet sent successfully." } when post succeeds', () => {
     const sheet = createTrackingSheet(1);
-
-    // processExtractionRow writes "none" to col B (resource links) and title to col D
-    const processExtractionRow = (_sheet, rowIndex, _url) => {
-      _sheet.getRange(rowIndex, 2).setValue('none');   // COL_RESOURCE_LINKS
-      _sheet.getRange(rowIndex, 4).setValue('My title'); // COL_TITLE
-    };
 
     // postTweetForRow writes "sent" to col C (status)
     const postTweetForRow = (_sheet, rowIndex, _title, _resourceLinks) => {
       _sheet.getRange(rowIndex, 3).setValue('sent');   // COL_STATUS
     };
 
-    const ctx = loadWebApp(buildOverrides({ sheet, processExtractionRow, postTweetForRow }));
-    const result = ctx.handleFormSubmit({ tweetLink: VALID_URL, scheduleMode: 'now' });
+    const ctx = loadWebApp(buildOverrides({ sheet, postTweetForRow }));
+    const result = ctx.handleFormSubmit({
+      tweetLink: VALID_URL,
+      title: 'My tweet text',
+      scheduleMode: 'now'
+    });
 
     expect(result).toEqual({ success: true, message: 'Tweet sent successfully.' });
-  });
-
-  it('returns { success: false, error: "error: bad url" } when extraction writes error to col B', () => {
-    const sheet = createTrackingSheet(1);
-
-    const processExtractionRow = (_sheet, rowIndex, _url) => {
-      _sheet.getRange(rowIndex, 2).setValue('error: bad url'); // COL_RESOURCE_LINKS
-    };
-
-    const postTweetForRow = jest.fn();
-
-    const ctx = loadWebApp(buildOverrides({ sheet, processExtractionRow, postTweetForRow }));
-    const result = ctx.handleFormSubmit({ tweetLink: VALID_URL, scheduleMode: 'now' });
-
-    expect(result).toEqual({ success: false, error: 'error: bad url' });
-    // postTweetForRow should NOT be called when extraction fails
-    expect(postTweetForRow).not.toHaveBeenCalled();
   });
 
   it('returns { success: false, error: "error: HTTP 403" } when post writes error to col C', () => {
     const sheet = createTrackingSheet(1);
 
-    const processExtractionRow = (_sheet, rowIndex, _url) => {
-      _sheet.getRange(rowIndex, 2).setValue('none');
-      _sheet.getRange(rowIndex, 4).setValue('My title');
-    };
-
     const postTweetForRow = (_sheet, rowIndex, _title, _resourceLinks) => {
       _sheet.getRange(rowIndex, 3).setValue('error: HTTP 403'); // COL_STATUS
     };
 
-    const ctx = loadWebApp(buildOverrides({ sheet, processExtractionRow, postTweetForRow }));
-    const result = ctx.handleFormSubmit({ tweetLink: VALID_URL, scheduleMode: 'now' });
+    const ctx = loadWebApp(buildOverrides({ sheet, postTweetForRow }));
+    const result = ctx.handleFormSubmit({
+      tweetLink: VALID_URL,
+      title: 'My tweet text',
+      scheduleMode: 'now'
+    });
 
     expect(result).toEqual({ success: false, error: 'error: HTTP 403' });
+  });
+
+  it('returns { success: false, error: "Tweet text is required." } when title is empty', () => {
+    const ctx = loadWebApp(buildOverrides());
+    const result = ctx.handleFormSubmit({
+      tweetLink: VALID_URL,
+      title: '',
+      scheduleMode: 'now'
+    });
+    expect(result).toEqual({ success: false, error: 'Tweet text is required.' });
   });
 });
 
@@ -274,6 +266,7 @@ describe('handleFormSubmit() — Cron flow', () => {
     const ctx = loadWebApp(buildOverrides());
     const result = ctx.handleFormSubmit({
       tweetLink: VALID_URL,
+      title: 'My tweet text',
       scheduleMode: 'cron',
       cronExpression: VALID_CRON
     });
@@ -284,6 +277,7 @@ describe('handleFormSubmit() — Cron flow', () => {
     const ctx = loadWebApp(buildOverrides());
     const result = ctx.handleFormSubmit({
       tweetLink: VALID_URL,
+      title: 'My tweet text',
       scheduleMode: 'cron',
       cronExpression: VALID_CRON
     });
@@ -293,17 +287,16 @@ describe('handleFormSubmit() — Cron flow', () => {
 
   it('Send Now success message contains "sent"', () => {
     const sheet = createTrackingSheet(1);
-
-    const processExtractionRow = (_sheet, rowIndex) => {
-      _sheet.getRange(rowIndex, 2).setValue('none');
-      _sheet.getRange(rowIndex, 4).setValue('title');
-    };
     const postTweetForRow = (_sheet, rowIndex) => {
       _sheet.getRange(rowIndex, 3).setValue('sent');
     };
 
-    const ctx = loadWebApp(buildOverrides({ sheet, processExtractionRow, postTweetForRow }));
-    const result = ctx.handleFormSubmit({ tweetLink: VALID_URL, scheduleMode: 'now' });
+    const ctx = loadWebApp(buildOverrides({ sheet, postTweetForRow }));
+    const result = ctx.handleFormSubmit({
+      tweetLink: VALID_URL,
+      title: 'My tweet text',
+      scheduleMode: 'now'
+    });
 
     expect(result.success).toBe(true);
     expect(result.message).toMatch(/sent/i);
@@ -314,21 +307,22 @@ describe('handleFormSubmit() — Cron flow', () => {
     const ctxCron = loadWebApp(buildOverrides());
     const cronResult = ctxCron.handleFormSubmit({
       tweetLink: VALID_URL,
+      title: 'My tweet text',
       scheduleMode: 'cron',
       cronExpression: VALID_CRON
     });
 
     // Send Now message
     const sheet = createTrackingSheet(1);
-    const processExtractionRow = (_sheet, rowIndex) => {
-      _sheet.getRange(rowIndex, 2).setValue('none');
-      _sheet.getRange(rowIndex, 4).setValue('title');
-    };
     const postTweetForRow = (_sheet, rowIndex) => {
       _sheet.getRange(rowIndex, 3).setValue('sent');
     };
-    const ctxNow = loadWebApp(buildOverrides({ sheet, processExtractionRow, postTweetForRow }));
-    const nowResult = ctxNow.handleFormSubmit({ tweetLink: VALID_URL, scheduleMode: 'now' });
+    const ctxNow = loadWebApp(buildOverrides({ sheet, postTweetForRow }));
+    const nowResult = ctxNow.handleFormSubmit({
+      tweetLink: VALID_URL,
+      title: 'My tweet text',
+      scheduleMode: 'now'
+    });
 
     expect(cronResult.message).not.toBe(nowResult.message);
   });
@@ -339,12 +333,8 @@ describe('handleFormSubmit() — Cron flow', () => {
 // ===========================================================================
 
 describe('doPost()', () => {
-  it('reads tweetLink, scheduleMode, cronExpression from e.parameter and returns ContentService output', () => {
+  it('parses JSON body from e.postData.contents and returns ContentService JSON output', () => {
     const sheet = createTrackingSheet(1);
-    const processExtractionRow = (_sheet, rowIndex) => {
-      _sheet.getRange(rowIndex, 2).setValue('none');
-      _sheet.getRange(rowIndex, 4).setValue('title');
-    };
     const postTweetForRow = (_sheet, rowIndex) => {
       _sheet.getRange(rowIndex, 3).setValue('sent');
     };
@@ -352,7 +342,7 @@ describe('doPost()', () => {
     const mockTextOutput = { setMimeType: jest.fn().mockReturnThis() };
     const createTextOutput = jest.fn().mockReturnValue(mockTextOutput);
 
-    const overrides = buildOverrides({ sheet, processExtractionRow, postTweetForRow });
+    const overrides = buildOverrides({ sheet, postTweetForRow });
     overrides.ContentService = {
       createTextOutput,
       MimeType: { JSON: 'application/json' }
@@ -360,46 +350,70 @@ describe('doPost()', () => {
 
     const ctx = loadWebApp(overrides);
 
-    const e = {
-      parameter: {
-        tweetLink:      'https://twitter.com/user/status/1234567890',
-        scheduleMode:   'now',
-        cronExpression: ''
-      }
+    const params = {
+      action:    'submitTweet',
+      tweetLink: 'https://twitter.com/user/status/1234567890',
+      title:     'Hello world',
+      scheduleMode: 'now',
     };
 
+    const e = { postData: { contents: JSON.stringify(params) } };
     const result = ctx.doPost(e);
 
-    // ContentService.createTextOutput should have been called with a JSON string
     expect(createTextOutput).toHaveBeenCalledTimes(1);
     const jsonArg = createTextOutput.mock.calls[0][0];
     const parsed = JSON.parse(jsonArg);
     expect(parsed).toHaveProperty('success');
-
-    // The return value is the mock text output
     expect(result).toBe(mockTextOutput);
+  });
+
+  it('routes action=fetchPreview to fetchTweetPreview', () => {
+    const mockFetchTweetPreview = jest.fn().mockReturnValue({ success: true, text: 'hi', mediaUrls: [] });
+    const mockTextOutput = { setMimeType: jest.fn().mockReturnThis() };
+    const createTextOutput = jest.fn().mockReturnValue(mockTextOutput);
+
+    const overrides = buildOverrides();
+    overrides.fetchTweetPreview = mockFetchTweetPreview;
+    overrides.extractTweetId = () => '123';
+    overrides.fetchTweetData = () => ({ text: 'hi', mediaUrls: [] });
+    overrides.ContentService = { createTextOutput, MimeType: { JSON: 'application/json' } };
+
+    const ctx = loadWebApp(overrides);
+    const e = { postData: { contents: JSON.stringify({ action: 'fetchPreview', tweetUrl: 'https://x.com/u/status/123' }) } };
+    ctx.doPost(e);
+
+    expect(createTextOutput).toHaveBeenCalledTimes(1);
+    const parsed = JSON.parse(createTextOutput.mock.calls[0][0]);
+    expect(parsed).toHaveProperty('success');
+  });
+
+  it('returns { success: false, error } for unknown action', () => {
+    const mockTextOutput = { setMimeType: jest.fn().mockReturnThis() };
+    const createTextOutput = jest.fn().mockReturnValue(mockTextOutput);
+
+    const overrides = buildOverrides();
+    overrides.ContentService = { createTextOutput, MimeType: { JSON: 'application/json' } };
+
+    const ctx = loadWebApp(overrides);
+    const e = { postData: { contents: JSON.stringify({ action: 'unknownAction' }) } };
+    ctx.doPost(e);
+
+    const parsed = JSON.parse(createTextOutput.mock.calls[0][0]);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toMatch(/unknown action/i);
   });
 });
 
 // ===========================================================================
-// doGet()
+// doGet() — removed in new architecture (frontend is on GitHub Pages)
+// Replaced with a note test confirming doGet is not defined
 // ===========================================================================
 
-describe('doGet()', () => {
-  it('returns an object with setTitle called with "Tweet Scheduler"', () => {
-    const setTitle = jest.fn().mockReturnThis();
-    const evaluate = jest.fn().mockReturnValue({ setTitle });
-    const createTemplateFromFile = jest.fn().mockReturnValue({ evaluate });
-
-    const overrides = buildOverrides();
-    overrides.HtmlService = { createTemplateFromFile };
-
-    const ctx = loadWebApp(overrides);
-    const result = ctx.doGet({});
-
-    expect(createTemplateFromFile).toHaveBeenCalledWith('Index');
-    expect(evaluate).toHaveBeenCalled();
-    expect(setTitle).toHaveBeenCalledWith('Tweet Scheduler');
+describe('doGet() — not present in new architecture', () => {
+  it('doGet is not defined (frontend served by GitHub Pages, not GAS)', () => {
+    const ctx = loadWebApp(buildOverrides());
+    // doGet was removed — the frontend is now a static site on GitHub Pages
+    expect(typeof ctx.doGet).toBe('undefined');
   });
 });
 
@@ -408,34 +422,50 @@ describe('doGet()', () => {
 // ===========================================================================
 
 describe('WebApp.html structure', () => {
-  it('contains an input with name="tweetLink"', () => {
-    expect(webAppHtml).toMatch(/name="tweetLink"/);
+  it('contains a tweet link input (id="cloneTweetLink")', () => {
+    expect(webAppHtml).toMatch(/id="cloneTweetLink"/);
   });
 
-  it('contains a radio input with name="scheduleMode" and value="now"', () => {
-    expect(webAppHtml).toMatch(/name="scheduleMode"[^>]*value="now"|value="now"[^>]*name="scheduleMode"/);
+  it('contains a radio input for clone tab with value="now"', () => {
+    expect(webAppHtml).toMatch(/name="cloneSchedule"[^>]*value="now"|value="now"[^>]*name="cloneSchedule"/);
   });
 
-  it('contains a radio input with name="scheduleMode" and value="cron"', () => {
-    expect(webAppHtml).toMatch(/name="scheduleMode"[^>]*value="cron"|value="cron"[^>]*name="scheduleMode"/);
+  it('contains a radio input for clone tab with value="cron"', () => {
+    expect(webAppHtml).toMatch(/name="cloneSchedule"[^>]*value="cron"|value="cron"[^>]*name="cloneSchedule"/);
   });
 
-  it('the "now" radio has the "checked" attribute', () => {
-    // Find the radio with value="now" and confirm "checked" appears on the same input tag
-    const nowRadioMatch = webAppHtml.match(/<input[^>]*value="now"[^>]*>/);
+  it('the clone "now" radio has the "checked" attribute', () => {
+    // Find the radio with name="cloneSchedule" and value="now" and confirm "checked" appears
+    const nowRadioMatch = webAppHtml.match(/<input[^>]*name="cloneSchedule"[^>]*value="now"[^>]*>|<input[^>]*value="now"[^>]*name="cloneSchedule"[^>]*>/);
     expect(nowRadioMatch).not.toBeNull();
     expect(nowRadioMatch[0]).toMatch(/checked/);
   });
 
-  it('contains an input with name="cronExpression"', () => {
-    expect(webAppHtml).toMatch(/name="cronExpression"/);
+  it('contains a cron expression input (id="cloneCron")', () => {
+    expect(webAppHtml).toMatch(/id="cloneCron"/);
   });
 
-  it('contains an element with id="feedback"', () => {
-    expect(webAppHtml).toMatch(/id="feedback"/);
+  it('contains a feedback element for the clone tab (id="cloneFeedback")', () => {
+    expect(webAppHtml).toMatch(/id="cloneFeedback"/);
   });
 
-  it('contains an element with id="cronGroup"', () => {
-    expect(webAppHtml).toMatch(/id="cronGroup"/);
+  it('contains a feedback element for the new tweet tab (id="newFeedback")', () => {
+    expect(webAppHtml).toMatch(/id="newFeedback"/);
+  });
+
+  it('contains a cron group element for the clone tab (id="cloneCronGroup")', () => {
+    expect(webAppHtml).toMatch(/id="cloneCronGroup"/);
+  });
+
+  it('contains a cron group element for the new tweet tab (id="newCronGroup")', () => {
+    expect(webAppHtml).toMatch(/id="newCronGroup"/);
+  });
+
+  it('contains a tab for cloning tweets (id="tabClone")', () => {
+    expect(webAppHtml).toMatch(/id="tabClone"/);
+  });
+
+  it('contains a tab for new tweets (id="tabNew")', () => {
+    expect(webAppHtml).toMatch(/id="tabNew"/);
   });
 });

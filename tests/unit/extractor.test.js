@@ -14,9 +14,9 @@ const fs = require('fs');
 const path = require('path');
 
 // Paths to the GAS source files under test
-const CONSTANTS_PATH = path.resolve(__dirname, '../../Constants.gs');
-const SHEET_UTILS_PATH = path.resolve(__dirname, '../../SheetUtils.gs');
-const EXTRACTOR_PATH = path.resolve(__dirname, '../../Extractor.gs');
+const CONSTANTS_PATH = path.resolve(__dirname, '../../scripts/Constants.gs');
+const SHEET_UTILS_PATH = path.resolve(__dirname, '../../scripts/SheetUtils.gs');
+const EXTRACTOR_PATH = path.resolve(__dirname, '../../scripts/Extractor.gs');
 
 const constantsCode = fs.readFileSync(CONSTANTS_PATH, 'utf8');
 const sheetUtilsCode = fs.readFileSync(SHEET_UTILS_PATH, 'utf8');

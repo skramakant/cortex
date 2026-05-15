@@ -14,7 +14,7 @@ const path = require('path');
 const { createMockScriptApp } = require('../gasGlobals');
 
 // Path to the GAS source file under test
-const TRIGGER_MANAGER_PATH = path.resolve(__dirname, '../../TriggerManager.gs');
+const TRIGGER_MANAGER_PATH = path.resolve(__dirname, '../../scripts/TriggerManager.gs');
 const triggerManagerCode = fs.readFileSync(TRIGGER_MANAGER_PATH, 'utf8');
 
 /**

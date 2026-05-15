@@ -2,330 +2,422 @@
 
 ## Overview
 
-This feature adds a Google Apps Script Web App to the existing tweet-resource-extractor project. The web app exposes a browser-accessible HTML form that lets users submit tweet links for either immediate posting ("Send Now") or scheduled posting via a cron expression. It integrates with the existing `SheetUtils`, `Extractor`, `Poster`, and `Scheduler` modules without modifying them.
+The frontend is a static site hosted on GitHub Pages. It communicates with the Google Apps Script backend via `fetch()` POST requests — there is no `google.script.run`, no `doGet`, and no server-side HTML rendering. The GAS backend exposes a JSON API via `doPost()` with action-based routing.
 
-The implementation consists of two new files:
-- **`WebApp.gs`** — server-side `doGet()` and `doPost()` handlers
-- **`WebApp.html`** — the HTML/CSS/JS form template served by `HtmlService`
-
-The web app follows the standard Google Apps Script Web App pattern: `doGet()` serves the HTML page, and the client-side JavaScript calls `google.script.run` to invoke `doPost`-equivalent server functions asynchronously (since `doPost` is only invoked by external HTTP POST, not by `google.script.run`). The server-side handler function is named `handleFormSubmit(params)` and is called from the client via `google.script.run`.
-
-### Key Design Decisions
-
-1. **`google.script.run` instead of a raw `doPost`**: The form uses `google.script.run.handleFormSubmit(params)` rather than a native HTML form POST. This avoids a full page reload on submission (satisfying Requirement 8.1) and keeps the response handling in client-side JavaScript. The `doPost(e)` function is still implemented for completeness (Requirement 9) and delegates to the same `handleFormSubmit` logic.
-
-2. **Server-side validation mirrors client-side**: Tweet URL and cron expression validation are performed server-side in `WebApp.gs`. Client-side validation provides fast feedback but is not relied upon for correctness.
-
-3. **No new sheet columns or schema changes**: The web app writes only to the existing five columns (A–E) using the existing `writeCell()` and `getOrCreateTweetSheet()` functions.
-
-4. **Immediate extraction/posting reads back from the sheet**: After writing a new row, `processExtractionRow()` is called, which writes to columns B and D. The handler then reads those values back from the sheet to check for errors before calling `postTweetForRow()`.
+The implementation consists of:
+- **`frontend/public/index.html`** — the HTML page with Tailwind CSS classes and Inter font
+- **`frontend/public/js/api.js`** — all `fetch()` calls to the GAS backend (`__GAS_URL__` replaced at build time)
+- **`frontend/public/js/utils.js`** — shared validation helpers and UI utilities
+- **`frontend/public/js/app.js`** — tab switching, form logic, event handlers
+- **`frontend/src/css/input.css`** — Tailwind CSS source
+- **`frontend/scripts/inject-env.js`** — Node.js build script that replaces `__GAS_URL__`
+- **`scripts/WebApp.gs`** — GAS backend: `doPost`, `fetchTweetPreview`, `handleFormSubmit`, `handleNewTweet`
 
 ---
 
 ## Architecture
 
-```mermaid
-graph TD
-    Browser -->|HTTP GET| doGet
-    Browser -->|google.script.run| handleFormSubmit
-    Browser -->|HTTP POST| doPost
+```
+GitHub Pages (static)                    Google Apps Script
+frontend/public/
+  index.html                             scripts/WebApp.gs
+  js/api.js  ──── fetch() POST ────────► doPost(e)
+  js/utils.js                              │
+  js/app.js                                ├─ action=fetchPreview ──► fetchTweetPreview()
+                                           │                              │
+                                           │                         fetchTweetData()
+                                           │                         (TwitterClient.gs)
+                                           │
+                                           ├─ action=submitTweet ───► handleFormSubmit()
+                                           │                              │
+                                           │                         writeCell() × 7 cols
+                                           │                         postTweetForRow()
+                                           │                         (Poster.gs)
+                                           │
+                                           └─ action=newTweet ──────► handleNewTweet()
+                                                                          │
+                                                                     writeCell() × 7 cols
+                                                                     postTweetForRow()
+                                                                     (Poster.gs)
 
-    doGet -->|HtmlService.createTemplateFromFile| WebApp.html
-    doPost --> handleFormSubmit
-
-    handleFormSubmit --> validateInputs
-    validateInputs -->|invalid| returnError[Return error JSON]
-    validateInputs -->|valid| writeRow[writeCell to Sheet cols A & E]
-
-    writeRow -->|Send Now| processExtractionRow
-    processExtractionRow -->|col B has error| returnError
-    processExtractionRow -->|col B OK| postTweetForRow
-    postTweetForRow -->|col C = sent| returnSuccess[Return success JSON]
-    postTweetForRow -->|col C = error| returnError
-
-    writeRow -->|Cron mode| returnSuccess
-
-    subgraph Existing Modules
-        processExtractionRow
-        postTweetForRow
-        writeCell
-        getOrCreateTweetSheet
-        parseCronExpression
-    end
+GitHub Actions (.github/workflows/deploy.yml)
+  1. npm ci (frontend/)
+  2. tailwindcss build → public/css/app.css
+  3. inject-env.js: replace __GAS_URL__ in public/js/api.js
+  4. deploy frontend/public/ → gh-pages branch
 ```
 
 ---
 
-## Components and Interfaces
+## Frontend Components
 
-### `WebApp.gs`
+### `frontend/public/index.html`
 
-#### `doGet(e)`
-- Returns `HtmlService.createTemplateFromFile('WebApp').evaluate().setTitle('Tweet Scheduler')`
-- No parameters are used from `e`
+Two-tab layout using Tailwind utility classes and Inter font.
 
-#### `doPost(e)`
-- Reads `e.parameter.tweetLink`, `e.parameter.scheduleMode`, `e.parameter.cronExpression`
-- Delegates to `handleFormSubmit({ tweetLink, scheduleMode, cronExpression })`
-- Returns `ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON)`
+**Tab structure:**
+```
+<div class="tabs">
+  <button id="tabCloneBtn">Clone Tweet</button>
+  <button id="tabNewBtn">New Tweet</button>
+</div>
 
-#### `handleFormSubmit(params)`
-- **Input**: `{ tweetLink: string, scheduleMode: string, cronExpression?: string }`
-- **Output**: `{ success: boolean, message?: string, error?: string }`
-- Validates `tweetLink` (non-empty, matches URL pattern)
-- If `scheduleMode === 'cron'`: validates `cronExpression` via `parseCronExpression()`
-- Writes new row to sheet via `getOrCreateTweetSheet()` and `writeCell()`
-- If `scheduleMode === 'now'`: calls `processExtractionRow()`, checks col B, calls `postTweetForRow()`, checks col C
-- If `scheduleMode === 'cron'`: returns success immediately after writing
+<div id="tabClone">          ← Clone Tweet tab
+  <div id="cloneFetchPanel"> ← Step 1: URL input + schedule mode
+  <div id="clonePreviewPanel" class="hidden"> ← Step 2: edit + post
+  <div id="cloneFeedback" class="hidden">
 
-#### `_validateTweetLink(url)`
-- Internal helper; returns `null` if valid, or an error string if invalid
-- Checks non-empty and matches `/https?:\/\/(twitter\.com|x\.com)\/[^/]+\/status\/\d+/`
+<div id="tabNew" class="hidden">  ← New Tweet tab
+  ...textarea, resource link, schedule mode...
+  <div id="newFeedback" class="hidden">
+```
 
-#### `_getNewRowIndex(sheet)`
-- Internal helper; returns `sheet.getLastRow() + 1` (the 1-based index of the next empty row)
+**Key element IDs:**
 
-### `WebApp.html`
+| Element | ID |
+|---|---|
+| Clone tab tweet URL input | `cloneTweetLink` |
+| Clone tab fetch button | `cloneFetchBtn` |
+| Clone tab preview panel | `clonePreviewPanel` |
+| Clone tab editable textarea | `cloneEditTitle` |
+| Clone tab char counter | `cloneCharCount` |
+| Clone tab media preview | `cloneMediaPreview` |
+| Clone tab media URL list | `cloneMediaUrls` |
+| Clone tab media section | `cloneMediaSection` |
+| Clone tab back button | `cloneBackBtn` |
+| Clone tab submit button | `cloneSubmitBtn` |
+| Clone tab schedule radios | `name="cloneSchedule"` (values: `now`, `cron`) |
+| Clone tab cron group | `cloneCronGroup` |
+| Clone tab cron input | `cloneCron` |
+| Clone tab max count input | `cloneMaxCount` |
+| Clone tab loading indicator | `cloneLoading` |
+| Clone tab feedback | `cloneFeedback` |
+| New tweet textarea | `newTitle` |
+| New tweet char counter | `newCharCount` |
+| New tweet resource link | `newResourceLink` |
+| New tweet schedule radios | `name="newSchedule"` (values: `now`, `cron`) |
+| New tweet cron group | `newCronGroup` |
+| New tweet cron input | `newCron` |
+| New tweet max count input | `newMaxCount` |
+| New tweet submit button | `newSubmitBtn` |
+| New tweet loading indicator | `newLoading` |
+| New tweet feedback | `newFeedback` |
 
-A single HTML file containing inline CSS and JavaScript, served via `HtmlService.createTemplateFromFile`.
+### `frontend/public/js/api.js`
 
-**Form fields:**
-| Field | Type | Name attribute |
-|---|---|---|
-| Tweet Link | `<input type="text">` | `tweetLink` |
-| Schedule Mode | `<input type="radio">` | `scheduleMode` (values: `now`, `cron`) |
-| Cron Expression | `<input type="text">` | `cronExpression` |
+All GAS API calls. The constant `GAS_URL = '__GAS_URL__'` is replaced at build time.
 
-**Client-side JS responsibilities:**
-- Toggle visibility of the cron expression field based on radio selection
-- On form submit: collect values, call `google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFailure).handleFormSubmit(params)`
-- `onSuccess(result)`: display `result.message` or `result.error` in the Feedback Area; if success, clear tweet link and reset to "Send Now"
-- `onFailure(err)`: display the error in the Feedback Area; retain form values
+```javascript
+// Low-level POST
+async function gasPost(params)
+
+// Actions
+async function fetchTweetPreview(tweetUrl)
+  // → gasPost({ action: 'fetchPreview', tweetUrl })
+
+async function submitCloneTweet(params)
+  // → gasPost({ action: 'submitTweet', ...params })
+
+async function submitNewTweet(params)
+  // → gasPost({ action: 'newTweet', ...params })
+```
+
+All functions return `Promise<{ success: boolean, message?: string, error?: string }>`.
+`fetchTweetPreview` additionally returns `{ text?: string, mediaUrls?: string[] }` on success.
+
+### `frontend/public/js/utils.js`
+
+Pure utility functions with no DOM side effects (except `showFeedback`/`hideFeedback`).
+
+```javascript
+function validateTweetLink(url)        // → null | error string
+function validateCronExpression(cron)  // → null | error string (5-field check)
+function showFeedback(el, message, type)  // type: 'success' | 'error'
+function hideFeedback(el)
+function updateCharCount(textarea, counter, limit=280)
+function getRadioValue(name)           // → checked radio value
+```
+
+### `frontend/public/js/app.js`
+
+Main UI logic. Runs as a plain script (no bundler). Uses IIFEs for tab isolation.
+
+```javascript
+function switchTab(tab)   // 'clone' | 'new'
+
+(function initCloneTab() {
+  // Fetch button → fetchTweetPreview() → show preview panel
+  // Back button → hide preview, show fetch panel
+  // Submit button → submitCloneTweet() → show feedback, reset on success
+})();
+
+(function initNewTab() {
+  // Submit button → submitNewTweet() → show feedback, reset on success
+})();
+
+document.addEventListener('DOMContentLoaded', function() {
+  // Wire tab buttons, call switchTab('clone')
+});
+```
+
+---
+
+## Backend Components (`scripts/WebApp.gs`)
+
+### `doPost(e)`
+
+Reads `e.postData.contents` as JSON. Routes by `action` field. Wraps in try/catch.
+
+```javascript
+function doPost(e) {
+  var params = JSON.parse(e.postData.contents);
+  if      (params.action === 'fetchPreview')  result = fetchTweetPreview(params.tweetUrl);
+  else if (params.action === 'submitTweet')   result = handleFormSubmit(params);
+  else if (params.action === 'newTweet')      result = handleNewTweet(params);
+  else result = { success: false, error: 'Unknown action: ' + params.action };
+  return ContentService.createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+```
+
+### `fetchTweetPreview(tweetUrl)`
+
+Validates URL → `extractTweetId` → `fetchTweetData` → returns `{ success, text, mediaUrls }`. Does not write to sheet.
+
+### `handleFormSubmit(params)`
+
+Clone tweet flow. Input: `{ tweetLink, title, resourceLinks, scheduleMode, cronExpression?, maxCount? }`.
+
+Validation order:
+1. `_validateTweetLink(tweetLink)` — returns error if invalid
+2. `title` non-empty check
+3. If `scheduleMode === 'cron'`: `cronExpression` non-empty + `parseCronExpression()` check
+
+On valid input: writes 7-column row to sheet, then:
+- `scheduleMode === 'now'`: calls `postTweetForRow`; reads col C; returns success or error
+- `scheduleMode === 'cron'`: returns `{ success: true, message: "Tweet scheduled successfully." }`
+
+### `handleNewTweet(params)`
+
+New tweet flow. Input: `{ title, resourceLinks, scheduleMode, cronExpression?, maxCount? }`.
+
+Same validation as `handleFormSubmit` except no `tweetLink` validation. Writes empty string to `COL_TWEET_LINK`.
 
 ---
 
 ## Data Models
 
-### Form Submission Parameters
+### Sheet Row Written (7 columns)
+
+| Col | Constant | Clone tweet value | New tweet value |
+|-----|----------|-------------------|-----------------|
+| A | `COL_TWEET_LINK` | validated tweet URL | `""` |
+| B | `COL_RESOURCE_LINKS` | `resourceLinks` param | `resourceLinks` param |
+| C | `COL_STATUS` | `""` | `""` |
+| D | `COL_TITLE` | `title` param | `title` param |
+| E | `COL_CRON` | `""` or cron string | `""` or cron string |
+| F | `COL_MAX_COUNT` | `maxCount` param (default 0) | `maxCount` param (default 0) |
+| G | `COL_POST_COUNT` | `0` | `0` |
+
+### API Request Payloads
 
 ```javascript
+// fetchPreview
+{ action: "fetchPreview", tweetUrl: string }
+
+// submitTweet (clone)
 {
-  tweetLink:      string,   // e.g. "https://x.com/user/status/123456"
-  scheduleMode:   string,   // "now" | "cron"
-  cronExpression: string    // only present/used when scheduleMode === "cron"
+  action: "submitTweet",
+  tweetLink: string,
+  title: string,
+  resourceLinks: string,   // comma-separated URLs or ""
+  scheduleMode: "now" | "cron",
+  cronExpression: string,  // "" when scheduleMode === "now"
+  maxCount: number         // 0 = unlimited
+}
+
+// newTweet
+{
+  action: "newTweet",
+  title: string,
+  resourceLinks: string,
+  scheduleMode: "now" | "cron",
+  cronExpression: string,
+  maxCount: number
 }
 ```
 
-### Handler Response Object
+### API Response Shape
 
 ```javascript
-// Success
-{ success: true,  message: string }
-
-// Failure
+// All actions on failure
 { success: false, error: string }
+
+// submitTweet / newTweet on success
+{ success: true, message: "Tweet sent successfully." }      // Send Now
+{ success: true, message: "Tweet scheduled successfully." } // Cron
+
+// fetchPreview on success
+{ success: true, text: string, mediaUrls: string[] }
 ```
-
-### Sheet Row Written (columns A–E, 1-based)
-
-| Col | Constant | Value written by Web App |
-|-----|----------|--------------------------|
-| A | `COL_TWEET_LINK` | The validated tweet URL |
-| B | `COL_RESOURCE_LINKS` | `""` (written later by Extractor) |
-| C | `COL_STATUS` | `""` (written later by Poster/Scheduler) |
-| D | `COL_TITLE` | `""` (written later by Extractor) |
-| E | `COL_CRON` | `""` (Send Now) or the cron string (Cron mode) |
-
-> Columns B, C, D are left empty at write time. For "Send Now", `processExtractionRow()` fills B and D, then `postTweetForRow()` fills C — all within the same `handleFormSubmit` call.
 
 ### Validation Rules
 
-**Tweet Link:**
-- Must be non-empty (after trimming)
-- Must match: `/https?:\/\/(twitter\.com|x\.com)\/[^\/]+\/status\/\d+/`
+**Tweet Link (clone tab only):**
+- Non-empty after trim
+- Matches `/https?:\/\/(twitter\.com|x\.com)\/[^\/]+\/status\/\d+/`
+
+**Title (both tabs):**
+- Non-empty after trim
+- Error: `"Tweet text is required."`
 
 **Cron Expression (when scheduleMode === 'cron'):**
-- Must be non-empty (after trimming)
-- Must return a non-null result from `parseCronExpression()`
+- Non-empty after trim → `"Cron expression is required."`
+- `parseCronExpression()` returns non-null → `"Cron expression is invalid. Use 5-field format: minute hour dom month dow."`
+
+---
+
+## Build and CI/CD
+
+### Tailwind Build
+
+```
+frontend/src/css/input.css
+  @tailwind base;
+  @tailwind components;
+  @tailwind utilities;
+        │
+        ▼ tailwindcss --minify
+frontend/public/css/app.css   (committed by CI, not manually)
+```
+
+`tailwind.config.js` scans `frontend/public/**/*.html` and `frontend/public/js/**/*.js` for class names.
+
+### Secret Injection
+
+`frontend/scripts/inject-env.js` reads `process.env.GAS_URL` and replaces all occurrences of `__GAS_URL__` in `frontend/public/js/api.js`. Exits with code 1 if `GAS_URL` is not set.
+
+### GitHub Actions Workflow (`.github/workflows/deploy.yml`)
+
+Trigger: push to `main` or `workflow_dispatch`.
+
+Steps:
+1. `actions/checkout@v4`
+2. `actions/setup-node@v4` (Node 20, cache npm)
+3. `npm ci` in `frontend/`
+4. `npm run build:css` — Tailwind minified build
+5. `npm run build:js` — inject `GAS_URL` secret
+6. `peaceiris/actions-gh-pages@v4` — deploy `frontend/public/` to `gh-pages` branch
 
 ---
 
 ## Correctness Properties
 
-*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
-
-
 ### Property 1: Invalid tweet URL is rejected without writing to the sheet
 
-*For any* string submitted as `tweetLink` that is empty, whitespace-only, or does not match the pattern `https?://(twitter\.com|x\.com)/[^/]+/status/\d+`, calling `handleFormSubmit` SHALL return `{ success: false, error: <message> }` and SHALL NOT append any new row to the sheet.
+*For any* string submitted as `tweetLink` that is empty, whitespace-only, or does not match the URL pattern, `handleFormSubmit` SHALL return `{ success: false, error }` and SHALL NOT write any row to the sheet.
 
-**Validates: Requirements 2.2, 2.3**
+**Validates: Requirements 3.2, 3.3, 11.6**
 
 ### Property 2: Valid tweet URL is written to column A
 
-*For any* valid tweet URL (matching the required pattern), calling `handleFormSubmit` with that URL SHALL write that exact URL string to column A (`COL_TWEET_LINK`) of the newly appended row.
+*For any* valid tweet URL, `handleFormSubmit` SHALL write that exact URL to `COL_TWEET_LINK` of the new row.
 
-**Validates: Requirements 2.4, 6.1**
+**Validates: Requirements 3.5 (implicit), 11.6**
 
-### Property 3: "Send Now" mode writes empty string to column E
+### Property 3: "Send Now" writes empty string to column E
 
-*For any* valid tweet URL submitted with `scheduleMode = "now"`, the value written to column E (`COL_CRON`) of the new row SHALL be the empty string `""`.
-
-**Validates: Requirements 3.5**
-
-### Property 4: Valid cron expression is written to column E
-
-*For any* valid cron expression (one that `parseCronExpression()` returns non-null for) submitted with `scheduleMode = "cron"`, the value written to column E (`COL_CRON`) of the new row SHALL equal the submitted cron string exactly.
-
-**Validates: Requirements 3.6, 4.3, 6.1**
-
-### Property 5: Invalid or empty cron expression is rejected without writing to the sheet
-
-*For any* string submitted as `cronExpression` with `scheduleMode = "cron"` that is empty, whitespace-only, or causes `parseCronExpression()` to return `null`, calling `handleFormSubmit` SHALL return `{ success: false, error: <message> }` and SHALL NOT append any new row to the sheet.
-
-**Validates: Requirements 4.1, 4.2**
-
-### Property 6: Extraction error prevents posting; extraction success allows posting
-
-*For any* "Send Now" submission where `processExtractionRow()` writes a value beginning with `"error:"` to column B, `handleFormSubmit` SHALL return `{ success: false }` and SHALL NOT call `postTweetForRow()`. Conversely, *for any* "Send Now" submission where column B does not begin with `"error:"` after extraction, `postTweetForRow()` SHALL be called.
-
-**Validates: Requirements 5.2, 5.3**
-
-### Property 7: Posting error is propagated in the response
-
-*For any* error string written to column C (`COL_STATUS`) by `postTweetForRow()` (i.e., any value beginning with `"error:"`), `handleFormSubmit` SHALL return `{ success: false, error: <string> }` where the error detail from column C is included in the response.
-
-**Validates: Requirements 5.5**
-
-### Property 8: Cron mode never calls extraction or posting
-
-*For any* valid `(tweetLink, cronExpression)` pair submitted with `scheduleMode = "cron"`, `handleFormSubmit` SHALL NOT call `processExtractionRow()` or `postTweetForRow()`.
+*For any* valid submission with `scheduleMode = "now"`, the value written to `COL_CRON` SHALL be `""`.
 
 **Validates: Requirements 6.3**
 
-### Property 9: Response object always has the required shape
+### Property 4: Valid cron expression is written to column E
 
-*For any* input to `handleFormSubmit` (valid or invalid, any schedule mode), the returned object SHALL always be JSON-serialisable and SHALL contain a `success` field (boolean) and exactly one of `message` (string, when `success` is `true`) or `error` (string, when `success` is `false`).
+*For any* valid cron expression submitted with `scheduleMode = "cron"`, the value written to `COL_CRON` SHALL equal the submitted string exactly.
 
-**Validates: Requirements 9.4**
+**Validates: Requirements 6.4, 8.1**
 
-### Property 10: Validation error message identifies the invalid field
+### Property 5: Invalid or empty cron expression is rejected without writing to the sheet
 
-*For any* submission that fails validation (empty URL, invalid URL, empty cron, invalid cron), the `error` string in the response SHALL contain a reference to the field that failed validation (e.g., "tweet link" or "cron expression").
+*For any* empty or invalid cron string with `scheduleMode = "cron"`, `handleFormSubmit` SHALL return `{ success: false, error }` and SHALL NOT write any row.
 
-**Validates: Requirements 7.3**
+**Validates: Requirements 6.5, 6.6**
 
-### Property 11: Runtime error detail from extraction/posting appears in the response
+### Property 6: Posting error is propagated in the response
 
-*For any* error string produced by `processExtractionRow()` (written to col B) or `postTweetForRow()` (written to col C), that error detail SHALL appear verbatim or as a substring in the `error` field of the `handleFormSubmit` response.
+*For any* error string written to `COL_STATUS` by `postTweetForRow`, `handleFormSubmit` SHALL return `{ success: false, error }` containing that error detail.
 
-**Validates: Requirements 7.4**
+**Validates: Requirements 7.3, 7.5**
 
-### Property 12: Successful submission triggers form reset
+### Property 7: Cron mode never calls postTweetForRow
 
-*For any* successful `handleFormSubmit` call, the client-side `onSuccess` handler SHALL clear the tweet link input field and reset the schedule mode selection to `"now"`.
+*For any* valid `(tweetLink, title, cronExpression)` submitted with `scheduleMode = "cron"`, `handleFormSubmit` SHALL NOT call `postTweetForRow`.
 
-**Validates: Requirements 8.2**
+**Validates: Requirements 8.1**
 
-### Property 13: Failed submission retains form values
+### Property 8: Response object always has the required shape
 
-*For any* failed `handleFormSubmit` call, the client-side `onFailure` handler SHALL NOT clear the tweet link input field or the cron expression input field.
+*For any* input to `handleFormSubmit` or `handleNewTweet`, the returned object SHALL be JSON-serialisable and SHALL contain `success` (boolean) plus exactly one of `message` (when `success === true`) or `error` (when `success === false`).
 
-**Validates: Requirements 8.3**
+**Validates: Requirements 11.4, 11.5**
+
+### Property 9: Empty title is rejected without writing to the sheet
+
+*For any* submission where `title` is empty or whitespace-only, both `handleFormSubmit` and `handleNewTweet` SHALL return `{ success: false, error: "Tweet text is required." }` and SHALL NOT write any row.
+
+**Validates: Requirements 5.4, 11.6**
 
 ---
 
 ## Error Handling
 
-### Validation Errors (client returns `{ success: false, error: "..." }`)
+### Client-Side (before calling backend)
 
-| Condition | Error message |
+| Condition | Behaviour |
 |---|---|
-| `tweetLink` is empty or whitespace | `"Tweet link is required."` |
-| `tweetLink` does not match URL pattern | `"Tweet link must be a valid twitter.com or x.com status URL."` |
-| `scheduleMode === "cron"` and `cronExpression` is empty/whitespace | `"Cron expression is required."` |
-| `scheduleMode === "cron"` and `parseCronExpression()` returns null | `"Cron expression is invalid. Use 5-field format: minute hour dom month dow."` |
+| Empty tweet URL (clone tab) | Show error in `cloneFeedback`; do not call backend |
+| Invalid tweet URL (clone tab) | Show error in `cloneFeedback`; do not call backend |
+| Empty tweet text | Show error in feedback area; do not call backend |
+| Empty cron expression (cron mode) | Show error in feedback area; do not call backend |
+| Invalid cron format (cron mode) | Show error in feedback area; do not call backend |
+| Network error from `fetch()` | Show `"Network error: " + err.message` in feedback area |
 
-### Runtime Errors (propagated from existing modules)
+### Server-Side (WebApp.gs)
 
-| Source | Condition | Handling |
-|---|---|---|
-| `processExtractionRow()` | Writes `"error: ..."` to col B | Read col B after call; if starts with `"error:"`, return `{ success: false, error: <col B value> }` |
-| `postTweetForRow()` | Writes `"error: ..."` to col C | Read col C after call; if starts with `"error:"`, return `{ success: false, error: <col C value> }` |
-| `getOrCreateTweetSheet()` | Throws (e.g., no active spreadsheet) | Wrap in try/catch; return `{ success: false, error: "Sheet error: " + e.message }` |
-| Any unexpected exception | Uncaught error in `handleFormSubmit` | Wrap entire body in try/catch; return `{ success: false, error: "Unexpected error: " + e.message }` |
-
-### Client-Side Error Display
-
-- All errors are displayed in the `#feedback` div with a CSS class `error` (red styling)
-- All success messages are displayed with a CSS class `success` (green styling)
-- The feedback div is hidden on page load and shown after any submission
+| Condition | Response |
+|---|---|
+| `tweetLink` empty/invalid | `{ success: false, error: "Tweet link is required." }` or URL error |
+| `title` empty | `{ success: false, error: "Tweet text is required." }` |
+| `cronExpression` empty (cron mode) | `{ success: false, error: "Cron expression is required." }` |
+| `cronExpression` invalid (cron mode) | `{ success: false, error: "Cron expression is invalid. Use 5-field format: minute hour dom month dow." }` |
+| `postTweetForRow` writes error to col C | `{ success: false, error: <col C value> }` |
+| Unknown `action` | `{ success: false, error: "Unknown action: <action>" }` |
+| Any uncaught exception | `{ success: false, error: "Server error: " + e.message }` |
 
 ---
 
 ## Testing Strategy
 
-### Dual Testing Approach
+### Test File: `tests/unit/webApp.test.js`
 
-This feature uses both unit/example-based tests and property-based tests.
+Loads `scripts/Constants.gs`, `scripts/Scheduler.gs` (for `parseCronExpression`), and `scripts/WebApp.gs` into a Node.js `vm` context with mocked GAS globals.
 
-**Unit tests** cover:
-- Specific rendering checks (page title, form fields present, radio defaults)
-- Specific success/error message content
-- `doPost` parameter extraction
-- `doGet` return type
-
-**Property-based tests** cover:
-- Input validation logic across the full space of valid/invalid inputs
-- Round-trip correctness (values written to sheet match submitted values)
-- Conditional call logic (extraction/posting gating)
-- Response shape invariant
-
-### Property-Based Testing Library
-
-Use **[fast-check](https://github.com/dubzzz/fast-check)** (the existing test suite already uses Jest; fast-check integrates with Jest). Add `fast-check` as a dev dependency in `appscript/tests/package.json`.
-
-Each property test runs a minimum of **100 iterations**.
-
-### Test File
-
-New test file: `appscript/tests/unit/webApp.test.js`
-
-The test file mocks:
-- `getOrCreateTweetSheet()` — returns a mock sheet object
-- `writeCell()` — records calls
-- `processExtractionRow()` — configurable to write success or error values to col B
+**Mocked functions:**
+- `getOrCreateTweetSheet()` — returns a tracking mock sheet
+- `writeCell()` — records calls to the mock sheet
 - `postTweetForRow()` — configurable to write "sent" or "error: ..." to col C
-- `parseCronExpression()` — delegates to the real implementation (pure function, no side effects)
+- `parseCronExpression()` — uses the real implementation from `Scheduler.gs`
 
-### Property Test Tags
+**Test coverage:**
 
-Each property-based test is tagged with a comment in the format:
-```
-// Feature: tweet-web-app-ui, Property N: <property_text>
-```
+| Test group | What is tested |
+|---|---|
+| `_validateTweetLink()` | Valid URLs, empty string, whitespace, non-matching URLs |
+| `handleFormSubmit() — validation` | Empty link, invalid link, empty cron, invalid cron, empty title |
+| `handleFormSubmit() — Send Now` | Success path, posting error propagation, empty title |
+| `handleFormSubmit() — Cron` | Success path, message content, Send Now vs Cron messages differ |
+| `doPost()` | JSON body parsing, action routing, ContentService output |
+| `doGet()` | Confirmed not defined (frontend is on GitHub Pages) |
+| HTML structure | Tab IDs, radio names/values, cron group IDs, feedback IDs |
 
-### Test Coverage Map
-
-| Property | Test type | Description |
-|---|---|---|
-| P1 | Property | Invalid URLs rejected without sheet write |
-| P2 | Property | Valid URL written to col A |
-| P3 | Property | Send Now writes empty col E |
-| P4 | Property | Valid cron written to col E |
-| P5 | Property | Invalid cron rejected without sheet write |
-| P6 | Property | Extraction error gates posting |
-| P7 | Property | Posting error propagated in response |
-| P8 | Property | Cron mode skips extraction/posting |
-| P9 | Property | Response shape invariant |
-| P10 | Property | Validation error names the field |
-| P11 | Property | Runtime error detail in response |
-| P12 | Property | Success clears form (client-side) |
-| P13 | Property | Failure retains form values (client-side) |
-| 1.3 | Example | Page title is "Tweet Scheduler" |
-| 3.1–3.2 | Example | Radio buttons present, "Send Now" default |
-| 5.4 | Example | "sent" in col C → success=true |
-| 6.2 | Example | Cron success message contains "scheduled" |
-| 7.2 | Example | "now" and "cron" success messages differ |
-| 9.2–9.3 | Example | doPost reads correct parameters |
-| 9.5 | Example | doPost returns JSON ContentService output |
+Total webApp tests: part of the 228-test suite.
