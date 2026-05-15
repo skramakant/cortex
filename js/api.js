@@ -1,13 +1,15 @@
 /**
  * api.js — All GAS API calls.
- * https://script.google.com/macros/s/AKfycbyHWV6avssyTsQLxF86TtfTjSIui4SPtL76nxeS2nXIsGw0WaAKWIjQCshC0XWt1mIFRQ/exec is replaced with the actual GAS web app URL at build time
- * by the GitHub Actions workflow (GAS_URL secret → inject-env.js).
+ * https://script.google.com/macros/s/AKfycby6JpQtIcv2CkRoYJ1gu6Ow8L9SEo4xtsD9RDzoZdJSFT18CVVq8CepjlYjNdU6_kSt9Q/exec and 6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259 are replaced at build time by inject-env.js.
+ * GAS_URL and API_KEY are stored as GitHub Secrets and injected by GitHub Actions.
  */
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyHWV6avssyTsQLxF86TtfTjSIui4SPtL76nxeS2nXIsGw0WaAKWIjQCshC0XWt1mIFRQ/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycby6JpQtIcv2CkRoYJ1gu6Ow8L9SEo4xtsD9RDzoZdJSFT18CVVq8CepjlYjNdU6_kSt9Q/exec';
+const API_KEY = '6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259';
 
 /**
  * Low-level POST to the GAS backend.
+ * Automatically includes the API key in every request body.
  * @param {Object} params
  * @returns {Promise<{success: boolean, message?: string, error?: string}>}
  */
@@ -17,7 +19,7 @@ async function gasPost(params) {
     response = await fetch(GAS_URL, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(params),
+      body:    JSON.stringify({ ...params, apiKey: API_KEY }),
     });
   } catch (err) {
     return { success: false, error: 'Network error: ' + err.message };
