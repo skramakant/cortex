@@ -192,14 +192,19 @@ function handleFormSubmit(params) {
 
 /**
  * Handles submission of a brand-new tweet (no source URL).
+ * Accepts either a resourceLinks URL or a Base64-encoded image (imageBase64).
+ * If imageBase64 is provided it is uploaded to Twitter directly; the resulting
+ * media URL is stored in resourceLinks for the sheet row.
  *
- * @param {{ title: string, resourceLinks: string, scheduleMode: string, cronExpression?: string, maxCount?: number }} params
+ * @param {{ title: string, resourceLinks: string, imageBase64?: string,
+ *           scheduleMode: string, cronExpression?: string, maxCount?: number }} params
  * @returns {{ success: boolean, message?: string, error?: string }}
  */
 function handleNewTweet(params) {
   try {
     var title          = params.title || '';
     var resourceLinks  = params.resourceLinks || '';
+    var imageBase64    = params.imageBase64 || '';
     var scheduleMode   = params.scheduleMode;
     var cronExpression = params.cronExpression;
     var maxCount       = parseInt(params.maxCount, 10) || 0;
@@ -221,6 +226,18 @@ function handleNewTweet(params) {
           error: 'Cron expression is invalid. Use 5-field format: minute hour dom month dow.'
         };
       }
+    }
+
+    // If a Base64 image was uploaded, upload it to Twitter now and use the
+    // media_id as the resource. For scheduled tweets the media_id is stored
+    // in resourceLinks so the Poster can attach it when the cron fires.
+    if (imageBase64) {
+      var uploadResult = uploadMediaBase64(imageBase64);
+      if (uploadResult.error) {
+        return { success: false, error: 'Image upload failed: ' + uploadResult.error };
+      }
+      // Store the media_id in resourceLinks so Poster.gs can attach it
+      resourceLinks = 'media_id:' + uploadResult.mediaId;
     }
 
     // Write new row to sheet

@@ -299,6 +299,112 @@ function uploadMedia(imageUrl) {
 
 
 /**
+ * Posts a tweet with pre-uploaded media IDs (skips the upload step).
+ * Used when a media_id was obtained earlier (e.g. from uploadMediaBase64).
+ * @param {string}   text      Tweet text
+ * @param {string[]} mediaIds  Array of media_id_string values
+ * @returns {{ id: string } | { error: string }}
+ */
+function postTweetWithMediaIds(text, mediaIds) {
+  var url = 'https://api.x.com/2/tweets';
+
+  var authHeader;
+  try {
+    authHeader = buildOAuth1Header('POST', url, {});
+  } catch (e) {
+    return { error: 'auth error: ' + e.message };
+  }
+
+  var body = { text: text };
+  if (mediaIds && mediaIds.length > 0) {
+    body.media = { media_ids: mediaIds };
+  }
+
+  var response = UrlFetchApp.fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization:  authHeader,
+      'Content-Type': 'application/json'
+    },
+    payload: JSON.stringify(body),
+    muteHttpExceptions: true
+  });
+
+  var statusCode = response.getResponseCode();
+  if (statusCode !== 201 && statusCode !== 200) {
+    var errBody;
+    try { errBody = JSON.parse(response.getContentText()); } catch (e) {}
+    var errMsg = (errBody && errBody.detail) ? errBody.detail : 'HTTP ' + statusCode;
+    return { error: errMsg };
+  }
+
+  var respBody;
+  try {
+    respBody = JSON.parse(response.getContentText());
+  } catch (e) {
+    return { error: 'invalid JSON response' };
+  }
+
+  return { id: respBody.data && respBody.data.id };
+}
+
+/**
+ * Uploads an image supplied as a raw Base64 string (no data: prefix).
+ * Used when the frontend sends a locally-selected file encoded in the browser.
+ * @param {string} base64Data  Raw Base64-encoded image bytes (no "data:..." prefix)
+ * @returns {{ mediaId: string } | { error: string }}
+ */
+function uploadMediaBase64(base64Data) {
+  try {
+    var uploadUrl = 'https://upload.twitter.com/1.1/media/upload.json';
+    var authHeader;
+    try {
+      authHeader = buildOAuth1Header('POST', uploadUrl, {});
+    } catch (e) {
+      return { error: 'auth error: ' + e.message };
+    }
+
+    var boundary = '----FormBoundary' + generateNonce();
+    var payload = '--' + boundary + '\r\n' +
+      'Content-Disposition: form-data; name="media_data"\r\n\r\n' +
+      base64Data + '\r\n' +
+      '--' + boundary + '--\r\n';
+
+    var uploadResponse = UrlFetchApp.fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: authHeader,
+        'Content-Type': 'multipart/form-data; boundary=' + boundary
+      },
+      payload: payload,
+      muteHttpExceptions: true
+    });
+
+    var statusCode = uploadResponse.getResponseCode();
+    if (statusCode !== 200 && statusCode !== 201) {
+      var errBody;
+      try { errBody = JSON.parse(uploadResponse.getContentText()); } catch (e) {}
+      var errMsg = (errBody && errBody.errors && errBody.errors[0]) ?
+        errBody.errors[0].message : 'HTTP ' + statusCode;
+      return { error: 'Media upload failed: ' + errMsg };
+    }
+
+    var respBody;
+    try {
+      respBody = JSON.parse(uploadResponse.getContentText());
+    } catch (e) {
+      return { error: 'Invalid response from media upload' };
+    }
+
+    return { mediaId: respBody.media_id_string };
+
+  } catch (e) {
+    return { error: 'Media upload error: ' + e.message };
+  }
+}
+
+
+/**
  * Generates a random nonce string for OAuth.
  * @returns {string}
  */
