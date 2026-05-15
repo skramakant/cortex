@@ -1,6 +1,6 @@
 /**
  * app.js — Main UI logic.
- * Handles tab switching, form interactions, and wires up API calls.
+ * Handles tab switching, cron builder, form interactions, and API calls.
  * Runs as a plain script (no ES module bundler needed for GitHub Pages).
  */
 
@@ -12,16 +12,123 @@ function switchTab(tab) {
   document.getElementById('tabClone').classList.toggle('hidden', tab !== 'clone');
   document.getElementById('tabNew').classList.toggle('hidden',   tab !== 'new');
 
-  ['tabCloneBtn', 'tabNewBtn'].forEach(id => {
-    const btn    = document.getElementById(id);
-    const active = (id === 'tabCloneBtn' && tab === 'clone') ||
-                   (id === 'tabNewBtn'   && tab === 'new');
-    btn.classList.toggle('border-b-2',           active);
-    btn.classList.toggle('border-blue-500',      active);
-    btn.classList.toggle('text-blue-500',        active);
-    btn.classList.toggle('font-semibold',        active);
-    btn.classList.toggle('text-gray-500',        !active);
+  ['tabCloneBtn', 'tabNewBtn'].forEach(function(id) {
+    var btn    = document.getElementById(id);
+    var active = (id === 'tabCloneBtn' && tab === 'clone') ||
+                 (id === 'tabNewBtn'   && tab === 'new');
+    btn.classList.toggle('border-b-2',      active);
+    btn.classList.toggle('border-blue-500', active);
+    btn.classList.toggle('text-blue-500',   active);
+    btn.classList.toggle('font-semibold',   active);
+    btn.classList.toggle('text-gray-500',   !active);
   });
+}
+
+// ============================================================
+// Cron Builder
+// Builds a 5-field cron expression from dropdown selections
+// and writes it to a hidden <input> + a preview <code> element.
+// ============================================================
+
+/**
+ * Generates a cron expression string from the builder dropdowns.
+ * @param {string} prefix  - 'clone' or 'new'
+ * @returns {string}  5-field cron expression
+ */
+function buildCronExpression(prefix) {
+  var freq    = document.getElementById(prefix + 'CronFreq').value;
+  var hour    = document.getElementById(prefix + 'CronHour').value;
+  var minute  = document.getElementById(prefix + 'CronMinute').value;
+  var dow     = document.getElementById(prefix + 'CronDow').value;
+  var dom     = document.getElementById(prefix + 'CronDom').value;
+  var interval = document.getElementById(prefix + 'CronInterval').value;
+
+  switch (freq) {
+    case 'hourly':  return minute + ' * * * *';
+    case 'daily':   return minute + ' ' + hour + ' * * *';
+    case 'weekly':  return minute + ' ' + hour + ' * * ' + dow;
+    case 'monthly': return minute + ' ' + hour + ' ' + dom + ' * *';
+    case 'custom':  return '*/' + interval + ' * * * *';
+    default:        return minute + ' ' + hour + ' * * *';
+  }
+}
+
+/**
+ * Updates the visible rows and preview for a cron builder.
+ * @param {string} prefix  - 'clone' or 'new'
+ */
+function updateCronBuilder(prefix) {
+  var freq = document.getElementById(prefix + 'CronFreq').value;
+
+  // Show/hide rows based on frequency
+  document.getElementById(prefix + 'CronDowRow').classList.toggle('hidden',      freq !== 'weekly');
+  document.getElementById(prefix + 'CronDomRow').classList.toggle('hidden',      freq !== 'monthly');
+  document.getElementById(prefix + 'CronTimeRow').classList.toggle('hidden',     freq === 'custom' || freq === 'hourly');
+  document.getElementById(prefix + 'CronIntervalRow').classList.toggle('hidden', freq !== 'custom');
+
+  // Generate expression and update hidden input + preview
+  var expr = buildCronExpression(prefix);
+  document.getElementById(prefix + 'Cron').value          = expr;
+  document.getElementById(prefix + 'CronPreview').textContent = expr;
+}
+
+/**
+ * Populates hour (0–23) and day-of-month (1–28) selects,
+ * then wires all builder dropdowns to updateCronBuilder.
+ * @param {string} prefix  - 'clone' or 'new'
+ */
+function initCronBuilder(prefix) {
+  // Populate hour select (0–23, displayed as 00–23)
+  var hourSel = document.getElementById(prefix + 'CronHour');
+  for (var h = 0; h < 24; h++) {
+    var opt = document.createElement('option');
+    opt.value = h;
+    opt.textContent = (h < 10 ? '0' : '') + h + ':00';
+    if (h === 9) opt.selected = true;
+    hourSel.appendChild(opt);
+  }
+
+  // Populate day-of-month select (1–28)
+  var domSel = document.getElementById(prefix + 'CronDom');
+  for (var d = 1; d <= 28; d++) {
+    var opt2 = document.createElement('option');
+    opt2.value = d;
+    opt2.textContent = d;
+    if (d === 1) opt2.selected = true;
+    domSel.appendChild(opt2);
+  }
+
+  // Wire all dropdowns to update the expression on change
+  var ids = [
+    prefix + 'CronFreq',
+    prefix + 'CronHour',
+    prefix + 'CronMinute',
+    prefix + 'CronDow',
+    prefix + 'CronDom',
+    prefix + 'CronInterval',
+  ];
+  ids.forEach(function(id) {
+    document.getElementById(id).addEventListener('change', function() {
+      updateCronBuilder(prefix);
+    });
+  });
+
+  // Set initial state
+  updateCronBuilder(prefix);
+}
+
+/**
+ * Resets the cron builder dropdowns to defaults.
+ * @param {string} prefix  - 'clone' or 'new'
+ */
+function resetCronBuilder(prefix) {
+  document.getElementById(prefix + 'CronFreq').value   = 'daily';
+  document.getElementById(prefix + 'CronHour').value   = '9';
+  document.getElementById(prefix + 'CronMinute').value = '0';
+  document.getElementById(prefix + 'CronDow').value    = '1';
+  document.getElementById(prefix + 'CronDom').value    = '1';
+  document.getElementById(prefix + 'CronInterval').value = '5';
+  updateCronBuilder(prefix);
 }
 
 // ============================================================
@@ -29,20 +136,20 @@ function switchTab(tab) {
 // ============================================================
 
 (function initCloneTab() {
-  let fetchedMediaUrls = [];
+  var fetchedMediaUrls = [];
 
-  const fetchPanel   = document.getElementById('cloneFetchPanel');
-  const previewPanel = document.getElementById('clonePreviewPanel');
-  const feedbackEl   = document.getElementById('cloneFeedback');
-  const loadingEl    = document.getElementById('cloneLoading');
-  const fetchBtn     = document.getElementById('cloneFetchBtn');
-  const backBtn      = document.getElementById('cloneBackBtn');
-  const submitBtn    = document.getElementById('cloneSubmitBtn');
-  const titleArea    = document.getElementById('cloneEditTitle');
-  const charCount    = document.getElementById('cloneCharCount');
-  const cronGroup    = document.getElementById('cloneCronGroup');
+  var fetchPanel   = document.getElementById('cloneFetchPanel');
+  var previewPanel = document.getElementById('clonePreviewPanel');
+  var feedbackEl   = document.getElementById('cloneFeedback');
+  var loadingEl    = document.getElementById('cloneLoading');
+  var fetchBtn     = document.getElementById('cloneFetchBtn');
+  var backBtn      = document.getElementById('cloneBackBtn');
+  var submitBtn    = document.getElementById('cloneSubmitBtn');
+  var titleArea    = document.getElementById('cloneEditTitle');
+  var charCount    = document.getElementById('cloneCharCount');
+  var cronGroup    = document.getElementById('cloneCronGroup');
 
-  // Toggle cron field
+  // Toggle cron builder visibility
   document.querySelectorAll('input[name="cloneSchedule"]').forEach(function(radio) {
     radio.addEventListener('change', function() {
       cronGroup.classList.toggle('hidden', this.value !== 'cron');
@@ -55,8 +162,8 @@ function switchTab(tab) {
 
   // Fetch button
   fetchBtn.addEventListener('click', async function() {
-    const tweetLink = document.getElementById('cloneTweetLink').value.trim();
-    const linkError = validateTweetLink(tweetLink);
+    var tweetLink = document.getElementById('cloneTweetLink').value.trim();
+    var linkError = validateTweetLink(tweetLink);
     if (linkError) { showFeedback(feedbackEl, linkError, 'error'); return; }
 
     fetchBtn.disabled = true;
@@ -64,7 +171,7 @@ function switchTab(tab) {
     loadingEl.classList.remove('hidden');
 
     try {
-      const result = await fetchTweetPreview(tweetLink);
+      var result = await fetchTweetPreview(tweetLink);
       if (!result.success) {
         showFeedback(feedbackEl, result.error, 'error');
         return;
@@ -74,20 +181,20 @@ function switchTab(tab) {
       updateCharCount(titleArea, charCount);
       fetchedMediaUrls = result.mediaUrls || [];
 
-      const mediaPreview = document.getElementById('cloneMediaPreview');
-      const mediaUrlsDiv = document.getElementById('cloneMediaUrls');
+      var mediaPreview = document.getElementById('cloneMediaPreview');
+      var mediaUrlsDiv = document.getElementById('cloneMediaUrls');
       mediaPreview.innerHTML = '';
       mediaUrlsDiv.innerHTML = '';
 
       if (fetchedMediaUrls.length > 0) {
         fetchedMediaUrls.forEach(function(url) {
-          const img = document.createElement('img');
+          var img = document.createElement('img');
           img.src = url;
           img.alt = 'media';
           img.className = 'w-28 h-20 object-cover rounded border border-gray-200';
           mediaPreview.appendChild(img);
 
-          const a = document.createElement('a');
+          var a = document.createElement('a');
           a.href = url;
           a.target = '_blank';
           a.rel = 'noopener noreferrer';
@@ -119,15 +226,17 @@ function switchTab(tab) {
 
   // Submit button
   submitBtn.addEventListener('click', async function() {
-    const title = titleArea.value.trim();
+    var title = titleArea.value.trim();
     if (!title) { showFeedback(feedbackEl, 'Tweet text is required.', 'error'); return; }
 
-    const scheduleMode   = getRadioValue('cloneSchedule');
-    const cronExpression = document.getElementById('cloneCron').value.trim();
+    var scheduleMode   = getRadioValue('cloneSchedule');
+    var cronExpression = document.getElementById('cloneCron').value.trim();
 
-    if (scheduleMode === 'cron') {
-      const cronError = validateCronExpression(cronExpression);
-      if (cronError) { showFeedback(feedbackEl, cronError, 'error'); return; }
+    // Cron expression is always valid when built from dropdowns,
+    // but run a quick sanity check anyway
+    if (scheduleMode === 'cron' && !cronExpression) {
+      showFeedback(feedbackEl, 'Could not build cron expression.', 'error');
+      return;
     }
 
     submitBtn.disabled = true;
@@ -136,7 +245,7 @@ function switchTab(tab) {
     loadingEl.classList.remove('hidden');
 
     try {
-      const params = {
+      var params = {
         tweetLink:      document.getElementById('cloneTweetLink').value.trim(),
         scheduleMode:   scheduleMode,
         cronExpression: cronExpression,
@@ -147,17 +256,17 @@ function switchTab(tab) {
           : 0,
       };
 
-      const result = await submitCloneTweet(params);
+      var result = await submitCloneTweet(params);
 
       if (result.success) {
         showFeedback(feedbackEl, result.message, 'success');
         previewPanel.classList.add('hidden');
         fetchPanel.classList.remove('hidden');
         document.getElementById('cloneTweetLink').value = '';
-        document.getElementById('cloneCron').value = '';
-        document.getElementById('cloneMaxCount').value = '';
+        document.getElementById('cloneMaxCount').value  = '';
         document.querySelector('input[name="cloneSchedule"][value="now"]').checked = true;
         cronGroup.classList.add('hidden');
+        resetCronBuilder('clone');
         fetchedMediaUrls = [];
       } else {
         showFeedback(feedbackEl, result.error, 'error');
@@ -176,12 +285,12 @@ function switchTab(tab) {
 // ============================================================
 
 (function initNewTab() {
-  const feedbackEl = document.getElementById('newFeedback');
-  const loadingEl  = document.getElementById('newLoading');
-  const submitBtn  = document.getElementById('newSubmitBtn');
-  const titleArea  = document.getElementById('newTitle');
-  const charCount  = document.getElementById('newCharCount');
-  const cronGroup  = document.getElementById('newCronGroup');
+  var feedbackEl = document.getElementById('newFeedback');
+  var loadingEl  = document.getElementById('newLoading');
+  var submitBtn  = document.getElementById('newSubmitBtn');
+  var titleArea  = document.getElementById('newTitle');
+  var charCount  = document.getElementById('newCharCount');
+  var cronGroup  = document.getElementById('newCronGroup');
 
   document.querySelectorAll('input[name="newSchedule"]').forEach(function(radio) {
     radio.addEventListener('change', function() {
@@ -194,15 +303,15 @@ function switchTab(tab) {
   });
 
   submitBtn.addEventListener('click', async function() {
-    const title = titleArea.value.trim();
+    var title = titleArea.value.trim();
     if (!title) { showFeedback(feedbackEl, 'Tweet text is required.', 'error'); return; }
 
-    const scheduleMode   = getRadioValue('newSchedule');
-    const cronExpression = document.getElementById('newCron').value.trim();
+    var scheduleMode   = getRadioValue('newSchedule');
+    var cronExpression = document.getElementById('newCron').value.trim();
 
-    if (scheduleMode === 'cron') {
-      const cronError = validateCronExpression(cronExpression);
-      if (cronError) { showFeedback(feedbackEl, cronError, 'error'); return; }
+    if (scheduleMode === 'cron' && !cronExpression) {
+      showFeedback(feedbackEl, 'Could not build cron expression.', 'error');
+      return;
     }
 
     submitBtn.disabled = true;
@@ -211,7 +320,7 @@ function switchTab(tab) {
     loadingEl.classList.remove('hidden');
 
     try {
-      const params = {
+      var params = {
         title:          title,
         resourceLinks:  document.getElementById('newResourceLink').value.trim(),
         scheduleMode:   scheduleMode,
@@ -221,16 +330,16 @@ function switchTab(tab) {
           : 0,
       };
 
-      const result = await submitNewTweet(params);
+      var result = await submitNewTweet(params);
 
       if (result.success) {
         showFeedback(feedbackEl, result.message, 'success');
         titleArea.value = '';
         document.getElementById('newResourceLink').value = '';
-        document.getElementById('newCron').value = '';
-        document.getElementById('newMaxCount').value = '';
+        document.getElementById('newMaxCount').value     = '';
         document.querySelector('input[name="newSchedule"][value="now"]').checked = true;
         cronGroup.classList.add('hidden');
+        resetCronBuilder('new');
         updateCharCount(titleArea, charCount);
       } else {
         showFeedback(feedbackEl, result.error, 'error');
@@ -249,6 +358,10 @@ function switchTab(tab) {
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', function() {
+  // Init cron builders (populates hour/dom selects and sets initial expression)
+  initCronBuilder('clone');
+  initCronBuilder('new');
+
   document.getElementById('tabCloneBtn').addEventListener('click', function() { switchTab('clone'); });
   document.getElementById('tabNewBtn').addEventListener('click',   function() { switchTab('new'); });
   switchTab('clone');
