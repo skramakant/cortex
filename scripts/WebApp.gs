@@ -13,7 +13,7 @@
 
 /**
  * HTTP POST handler — entry point for all frontend API calls.
- * Parses the JSON body, routes by action, and returns a JSON response.
+ * Parses the JSON body, validates the API key, routes by action, and returns a JSON response.
  * @param {Object} e  The POST event object.
  * @returns {GoogleAppsScript.Content.TextOutput}
  */
@@ -21,6 +21,22 @@ function doPost(e) {
   var result;
   try {
     var params = JSON.parse(e.postData.contents);
+
+    // --- API key validation ---
+    var expectedKey = PropertiesService.getScriptProperties().getProperty('API_KEY');
+    if (!expectedKey) {
+      result = { success: false, error: 'Server misconfiguration: API_KEY not set.' };
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    if (params.apiKey !== expectedKey) {
+      result = { success: false, error: 'Unauthorized.' };
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     var action = params.action;
 
     if (action === 'fetchPreview') {

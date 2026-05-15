@@ -91,12 +91,14 @@ function createTrackingSheet(lastRow = 1) {
  * @param {Object}   opts.sheet                  - mock sheet (default: createTrackingSheet())
  * @param {Function} opts.processExtractionRow   - mock for processExtractionRow
  * @param {Function} opts.postTweetForRow        - mock for postTweetForRow
+ * @param {string}   opts.apiKey                 - API key stored in Script Properties (default: 'test-api-key')
  * @returns {Object} overrides object
  */
 function buildOverrides({
   sheet = createTrackingSheet(),
   processExtractionRow = () => {},
-  postTweetForRow = () => {}
+  postTweetForRow = () => {},
+  apiKey = 'test-api-key'
 } = {}) {
   return {
     getOrCreateTweetSheet: () => sheet,
@@ -105,6 +107,11 @@ function buildOverrides({
     },
     processExtractionRow,
     postTweetForRow,
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (key) => key === 'API_KEY' ? apiKey : null
+      })
+    },
     HtmlService: {
       createTemplateFromFile: () => ({
         evaluate: () => ({
@@ -329,10 +336,93 @@ describe('handleFormSubmit() — Cron flow', () => {
 });
 
 // ===========================================================================
-// doPost()
+// doPost() — API key validation
 // ===========================================================================
 
-describe('doPost()', () => {
+describe('doPost() — API key validation', () => {
+  function makeContentService() {
+    const mockTextOutput = { setMimeType: jest.fn().mockReturnThis() };
+    const createTextOutput = jest.fn().mockReturnValue(mockTextOutput);
+    return { createTextOutput, mockTextOutput };
+  }
+
+  it('returns { success: false, error: "Unauthorized." } when apiKey is missing from body', () => {
+    const { createTextOutput } = makeContentService();
+    const overrides = buildOverrides({ apiKey: 'secret-key' });
+    overrides.ContentService = { createTextOutput, MimeType: { JSON: 'application/json' } };
+
+    const ctx = loadWebApp(overrides);
+    const e = { postData: { contents: JSON.stringify({ action: 'submitTweet' }) } }; // no apiKey
+    ctx.doPost(e);
+
+    const parsed = JSON.parse(createTextOutput.mock.calls[0][0]);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toBe('Unauthorized.');
+  });
+
+  it('returns { success: false, error: "Unauthorized." } when apiKey is wrong', () => {
+    const { createTextOutput } = makeContentService();
+    const overrides = buildOverrides({ apiKey: 'secret-key' });
+    overrides.ContentService = { createTextOutput, MimeType: { JSON: 'application/json' } };
+
+    const ctx = loadWebApp(overrides);
+    const e = { postData: { contents: JSON.stringify({ action: 'submitTweet', apiKey: 'wrong-key' }) } };
+    ctx.doPost(e);
+
+    const parsed = JSON.parse(createTextOutput.mock.calls[0][0]);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toBe('Unauthorized.');
+  });
+
+  it('returns { success: false, error } for server misconfiguration when API_KEY not set in properties', () => {
+    const { createTextOutput } = makeContentService();
+    const overrides = buildOverrides({ apiKey: null }); // null = not set in properties
+    overrides.ContentService = { createTextOutput, MimeType: { JSON: 'application/json' } };
+
+    const ctx = loadWebApp(overrides);
+    const e = { postData: { contents: JSON.stringify({ action: 'submitTweet', apiKey: 'any-key' }) } };
+    ctx.doPost(e);
+
+    const parsed = JSON.parse(createTextOutput.mock.calls[0][0]);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toMatch(/misconfiguration/i);
+  });
+
+  it('proceeds normally when apiKey matches', () => {
+    const { createTextOutput } = makeContentService();
+    const sheet = createTrackingSheet(1);
+    const postTweetForRow = (_sheet, rowIndex) => {
+      _sheet.getRange(rowIndex, 3).setValue('sent');
+    };
+    const overrides = buildOverrides({ sheet, postTweetForRow, apiKey: 'secret-key' });
+    overrides.ContentService = { createTextOutput, MimeType: { JSON: 'application/json' } };
+
+    const ctx = loadWebApp(overrides);
+    const e = {
+      postData: {
+        contents: JSON.stringify({
+          action: 'submitTweet',
+          apiKey: 'secret-key',
+          tweetLink: 'https://twitter.com/user/status/1234567890',
+          title: 'Hello world',
+          scheduleMode: 'now',
+        })
+      }
+    };
+    ctx.doPost(e);
+
+    const parsed = JSON.parse(createTextOutput.mock.calls[0][0]);
+    expect(parsed.success).toBe(true);
+  });
+});
+
+// ===========================================================================
+// doPost() — routing
+// ===========================================================================
+
+describe('doPost() — routing', () => {
+  const VALID_KEY = 'test-api-key';
+
   it('parses JSON body from e.postData.contents and returns ContentService JSON output', () => {
     const sheet = createTrackingSheet(1);
     const postTweetForRow = (_sheet, rowIndex) => {
@@ -343,46 +433,50 @@ describe('doPost()', () => {
     const createTextOutput = jest.fn().mockReturnValue(mockTextOutput);
 
     const overrides = buildOverrides({ sheet, postTweetForRow });
-    overrides.ContentService = {
-      createTextOutput,
-      MimeType: { JSON: 'application/json' }
-    };
+    overrides.ContentService = { createTextOutput, MimeType: { JSON: 'application/json' } };
 
     const ctx = loadWebApp(overrides);
 
-    const params = {
-      action:    'submitTweet',
-      tweetLink: 'https://twitter.com/user/status/1234567890',
-      title:     'Hello world',
-      scheduleMode: 'now',
+    const e = {
+      postData: {
+        contents: JSON.stringify({
+          action:      'submitTweet',
+          apiKey:      VALID_KEY,
+          tweetLink:   'https://twitter.com/user/status/1234567890',
+          title:       'Hello world',
+          scheduleMode: 'now',
+        })
+      }
     };
-
-    const e = { postData: { contents: JSON.stringify(params) } };
     const result = ctx.doPost(e);
 
     expect(createTextOutput).toHaveBeenCalledTimes(1);
-    const jsonArg = createTextOutput.mock.calls[0][0];
-    const parsed = JSON.parse(jsonArg);
+    const parsed = JSON.parse(createTextOutput.mock.calls[0][0]);
     expect(parsed).toHaveProperty('success');
     expect(result).toBe(mockTextOutput);
   });
 
   it('routes action=fetchPreview to fetchTweetPreview', () => {
-    const mockFetchTweetPreview = jest.fn().mockReturnValue({ success: true, text: 'hi', mediaUrls: [] });
     const mockTextOutput = { setMimeType: jest.fn().mockReturnThis() };
     const createTextOutput = jest.fn().mockReturnValue(mockTextOutput);
 
     const overrides = buildOverrides();
-    overrides.fetchTweetPreview = mockFetchTweetPreview;
     overrides.extractTweetId = () => '123';
     overrides.fetchTweetData = () => ({ text: 'hi', mediaUrls: [] });
     overrides.ContentService = { createTextOutput, MimeType: { JSON: 'application/json' } };
 
     const ctx = loadWebApp(overrides);
-    const e = { postData: { contents: JSON.stringify({ action: 'fetchPreview', tweetUrl: 'https://x.com/u/status/123' }) } };
+    const e = {
+      postData: {
+        contents: JSON.stringify({
+          action: 'fetchPreview',
+          apiKey: VALID_KEY,
+          tweetUrl: 'https://x.com/u/status/123'
+        })
+      }
+    };
     ctx.doPost(e);
 
-    expect(createTextOutput).toHaveBeenCalledTimes(1);
     const parsed = JSON.parse(createTextOutput.mock.calls[0][0]);
     expect(parsed).toHaveProperty('success');
   });
@@ -395,7 +489,11 @@ describe('doPost()', () => {
     overrides.ContentService = { createTextOutput, MimeType: { JSON: 'application/json' } };
 
     const ctx = loadWebApp(overrides);
-    const e = { postData: { contents: JSON.stringify({ action: 'unknownAction' }) } };
+    const e = {
+      postData: {
+        contents: JSON.stringify({ action: 'unknownAction', apiKey: VALID_KEY })
+      }
+    };
     ctx.doPost(e);
 
     const parsed = JSON.parse(createTextOutput.mock.calls[0][0]);

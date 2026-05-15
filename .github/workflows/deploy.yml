@@ -36,13 +36,14 @@ jobs:
         run: npm run build:css
         working-directory: frontend
 
-      # 5. Inject GAS_URL secret into api.js
-      #    GAS_URL must be set as a repository secret in GitHub Settings → Secrets
-      - name: Inject GAS URL
+      # 5. Inject GAS_URL and API_KEY secrets into api.js
+      #    Both must be set as repository secrets in GitHub Settings → Secrets
+      - name: Inject GAS URL and API Key
         run: npm run build:js
         working-directory: frontend
         env:
           GAS_URL: ${{ secrets.GAS_URL }}
+          API_KEY: ${{ secrets.API_KEY }}
 
       # 6. Deploy the public/ folder to GitHub Pages (gh-pages branch)
       - name: Deploy to GitHub Pages

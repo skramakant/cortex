@@ -1,13 +1,15 @@
 /**
  * api.js — All GAS API calls.
- * __GAS_URL__ is replaced with the actual GAS web app URL at build time
- * by the GitHub Actions workflow (GAS_URL secret → inject-env.js).
+ * __GAS_URL__ and __API_KEY__ are replaced at build time by inject-env.js.
+ * GAS_URL and API_KEY are stored as GitHub Secrets and injected by GitHub Actions.
  */
 
 const GAS_URL = '__GAS_URL__';
+const API_KEY = '__API_KEY__';
 
 /**
  * Low-level POST to the GAS backend.
+ * Automatically includes the API key in every request body.
  * @param {Object} params
  * @returns {Promise<{success: boolean, message?: string, error?: string}>}
  */
@@ -17,7 +19,7 @@ async function gasPost(params) {
     response = await fetch(GAS_URL, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(params),
+      body:    JSON.stringify({ ...params, apiKey: API_KEY }),
     });
   } catch (err) {
     return { success: false, error: 'Network error: ' + err.message };
