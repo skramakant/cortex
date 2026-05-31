@@ -1,5 +1,5 @@
 {
-  "timeZone": "America/New_York",
+  "timeZone": "Asia/Kolkata",
   "dependencies": {},
   "exceptionLogging": "STACKDRIVER",
   "runtimeVersion": "V8",
@@ -7,6 +7,7 @@
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/script.external_request",
     "https://www.googleapis.com/auth/script.scriptapp",
-    "https://www.googleapis.com/auth/script.webapp.deploy"
+    "https://www.googleapis.com/auth/script.webapp.deploy",
+    "https://www.googleapis.com/auth/drive"
   ]
 }

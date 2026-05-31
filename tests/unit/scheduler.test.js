@@ -365,9 +365,20 @@ describe('runScheduler()', () => {
    * @returns {{ ctx, mockSheet, writeCellCalls, postTweetForRowCalls }}
    */
   function loadSchedulerWithMocks({ rows = [], now = new Date(2024, 0, 1, 9, 0, 0) } = {}) {
-    const mockSheet = {};
+    // Track cell values so getRange().getValue() returns what writeCell wrote
+    const cellData = {};
     const writeCellCalls = [];
     const postTweetForRowCalls = [];
+
+    const mockSheet = {
+      getRange(row, col) {
+        return {
+          getValue() {
+            return cellData[`${row},${col}`] !== undefined ? cellData[`${row},${col}`] : '';
+          }
+        };
+      }
+    };
 
     // Fixed Date constructor so `new Date()` returns `now`
     function MockDate() { return now; }
@@ -387,10 +398,15 @@ describe('runScheduler()', () => {
       getOrCreateTweetSheet: () => mockSheet,
       getAllRows: (_sheet) => rows,
       writeCell: (sheet, rowIndex, colIndex, value) => {
+        cellData[`${rowIndex},${colIndex}`] = value;
         writeCellCalls.push({ sheet, rowIndex, colIndex, value });
       },
-      postTweetForRow: (sheet, rowIndex, title, resourceLinks) => {
-        postTweetForRowCalls.push({ sheet, rowIndex, title, resourceLinks });
+      // postTweetForRow mock: writes "" to COL_STATUS (simulates unlimited recurring)
+      postTweetForRow: (sheet, rowIndex, title, resourceLinks, maxCount, newPostCount, tweetLink) => {
+        postTweetForRowCalls.push({ sheet, rowIndex, title, resourceLinks, maxCount, newPostCount, tweetLink });
+        // Simulate successful post: write blank status (unlimited) or "sent" (limit reached)
+        var limitReached = (maxCount > 0 && newPostCount >= maxCount);
+        cellData[`${rowIndex},3`] = limitReached ? 'sent' : '';
       },
 
       // Fixed Date

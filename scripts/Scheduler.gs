@@ -32,6 +32,7 @@ function runScheduler() {
     if (matchesCronSchedule(parsed, now)) {
       var title         = row[COL_TITLE - 1];
       var resourceLinks = row[COL_RESOURCE_LINKS - 1];
+      var tweetLink     = row[COL_TWEET_LINK - 1];
       var maxCount      = parseInt(row[COL_MAX_COUNT - 1], 10) || 0;
       var postCount     = parseInt(row[COL_POST_COUNT - 1], 10) || 0;
 
@@ -41,15 +42,20 @@ function runScheduler() {
         continue;
       }
 
-      postTweetForRow(sheet, rowIndex, title, resourceLinks);
-
-      // Increment post count after successful post
       var newPostCount = postCount + 1;
-      writeCell(sheet, rowIndex, COL_POST_COUNT, newPostCount);
 
-      // Mark as sent if max count reached
-      if (maxCount > 0 && newPostCount >= maxCount) {
-        writeCell(sheet, rowIndex, COL_STATUS, 'sent');
+      try {
+        postTweetForRow(sheet, rowIndex, title, resourceLinks, maxCount, newPostCount, tweetLink);
+
+        // Only increment post count if the post didn't error
+        var statusAfter = sheet.getRange(rowIndex, COL_STATUS).getValue();
+        if (String(statusAfter).indexOf('error:') !== 0) {
+          writeCell(sheet, rowIndex, COL_POST_COUNT, newPostCount);
+        }
+      } catch (e) {
+        // Safety net: if postTweetForRow throws despite its own try/catch,
+        // write the error and continue to the next row
+        writeCell(sheet, rowIndex, COL_STATUS, 'error: ' + e.message);
       }
     }
   }

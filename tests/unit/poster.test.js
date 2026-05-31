@@ -72,7 +72,7 @@ describe('postTweetForRow()', () => {
       const postTweetMock = jest.fn();
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, ROW, '', 'none');
+      ctx.postTweetForRow(mockSheet, ROW, '', 'none', 0, 1, '');
 
       expect(writtenCells[`${ROW},${COL_STATUS}`]).toBe('error: no tweet text');
       expect(postTweetMock).not.toHaveBeenCalled();
@@ -83,7 +83,7 @@ describe('postTweetForRow()', () => {
       const postTweetMock = jest.fn();
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, ROW, null, 'none');
+      ctx.postTweetForRow(mockSheet, ROW, null, 'none', 0, 1, '');
 
       expect(writtenCells[`${ROW},${COL_STATUS}`]).toBe('error: no tweet text');
       expect(postTweetMock).not.toHaveBeenCalled();
@@ -94,7 +94,7 @@ describe('postTweetForRow()', () => {
       const postTweetMock = jest.fn();
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, ROW, undefined, 'none');
+      ctx.postTweetForRow(mockSheet, ROW, undefined, 'none', 0, 1, '');
 
       expect(writtenCells[`${ROW},${COL_STATUS}`]).toBe('error: no tweet text');
       expect(postTweetMock).not.toHaveBeenCalled();
@@ -105,12 +105,35 @@ describe('postTweetForRow()', () => {
   // Successful post — Requirement 5.1, 5.2
   // -------------------------------------------------------------------------
   describe('successful post', () => {
-    it('writes "sent" to col C on a successful API response', () => {
+    it('writes "" (blank) to col C when maxCount is 0 (unlimited recurring)', () => {
       const writtenCells = {};
       const postTweetMock = jest.fn().mockReturnValue({ id: '123456' });
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, ROW, 'Hello world', 'none');
+      // maxCount=0, newPostCount=1 → unlimited → status should be cleared
+      ctx.postTweetForRow(mockSheet, ROW, 'Hello world', 'none', 0, 1, '', 0, 1, '');
+
+      expect(writtenCells[`${ROW},${COL_STATUS}`]).toBe('');
+    });
+
+    it('writes "" (blank) to col C when maxCount is set but limit not yet reached', () => {
+      const writtenCells = {};
+      const postTweetMock = jest.fn().mockReturnValue({ id: '123456' });
+      const ctx = buildContext(postTweetMock, writtenCells);
+
+      // maxCount=3, newPostCount=2 → not done yet → status should be cleared
+      ctx.postTweetForRow(mockSheet, ROW, 'Hello world', 'none', 3, 2, '', 0, 1, '');
+
+      expect(writtenCells[`${ROW},${COL_STATUS}`]).toBe('');
+    });
+
+    it('writes "sent" to col C when maxCount is reached', () => {
+      const writtenCells = {};
+      const postTweetMock = jest.fn().mockReturnValue({ id: '123456' });
+      const ctx = buildContext(postTweetMock, writtenCells);
+
+      // maxCount=3, newPostCount=3 → limit reached → "sent"
+      ctx.postTweetForRow(mockSheet, ROW, 'Hello world', 'none', 3, 3, '', 0, 1, '');
 
       expect(writtenCells[`${ROW},${COL_STATUS}`]).toBe('sent');
     });
@@ -120,20 +143,20 @@ describe('postTweetForRow()', () => {
       const postTweetMock = jest.fn().mockReturnValue({ id: '123456' });
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, ROW, 'My tweet text', 'none');
+      ctx.postTweetForRow(mockSheet, ROW, 'My tweet text', 'none', 0, 1, '', 0, 1, '');
 
       expect(postTweetMock).toHaveBeenCalledTimes(1);
       expect(postTweetMock.mock.calls[0][0]).toBe('My tweet text');
     });
 
-    it('writes "sent" to the correct row index', () => {
+    it('writes status to the correct row index', () => {
       const writtenCells = {};
       const postTweetMock = jest.fn().mockReturnValue({ id: '999' });
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, 5, 'Tweet at row 5', 'none');
+      ctx.postTweetForRow(mockSheet, 5, 'Tweet at row 5', 'none', 0, 1, '');
 
-      expect(writtenCells[`5,${COL_STATUS}`]).toBe('sent');
+      expect(writtenCells[`5,${COL_STATUS}`]).toBe('');
     });
   });
 
@@ -146,7 +169,7 @@ describe('postTweetForRow()', () => {
       const postTweetMock = jest.fn().mockReturnValue({ error: 'HTTP 403' });
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, ROW, 'Hello world', 'none');
+      ctx.postTweetForRow(mockSheet, ROW, 'Hello world', 'none', 0, 1, '');
 
       expect(writtenCells[`${ROW},${COL_STATUS}`]).toBe('error: HTTP 403');
     });
@@ -156,7 +179,7 @@ describe('postTweetForRow()', () => {
       const postTweetMock = jest.fn().mockReturnValue({ error: 'missing credentials' });
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, ROW, 'Some tweet', 'none');
+      ctx.postTweetForRow(mockSheet, ROW, 'Some tweet', 'none', 0, 1, '');
 
       expect(writtenCells[`${ROW},${COL_STATUS}`]).toBe('error: missing credentials');
     });
@@ -166,7 +189,7 @@ describe('postTweetForRow()', () => {
       const postTweetMock = jest.fn().mockReturnValue({ error: 'rate limit exceeded' });
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, ROW, 'Some tweet', 'none');
+      ctx.postTweetForRow(mockSheet, ROW, 'Some tweet', 'none', 0, 1, '');
 
       expect(writtenCells[`${ROW},${COL_STATUS}`]).not.toBe('sent');
     });
@@ -181,7 +204,7 @@ describe('postTweetForRow()', () => {
       const postTweetMock = jest.fn().mockReturnValue({ id: '1' });
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, ROW, 'Text only tweet', 'none');
+      ctx.postTweetForRow(mockSheet, ROW, 'Text only tweet', 'none', 0, 1, '');
 
       expect(postTweetMock).toHaveBeenCalledWith('Text only tweet', []);
     });
@@ -191,7 +214,7 @@ describe('postTweetForRow()', () => {
       const postTweetMock = jest.fn().mockReturnValue({ id: '1' });
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, ROW, 'Tweet', 'https://img.example.com/a.jpg,none');
+      ctx.postTweetForRow(mockSheet, ROW, 'Tweet', 'https://img.example.com/a.jpg,none', 0, 1, '');
 
       const mediaUrls = postTweetMock.mock.calls[0][1];
       expect(mediaUrls).not.toContain('none');
@@ -203,7 +226,7 @@ describe('postTweetForRow()', () => {
       const postTweetMock = jest.fn().mockReturnValue({ id: '1' });
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, ROW, 'Text only tweet', null);
+      ctx.postTweetForRow(mockSheet, ROW, 'Text only tweet', null, 0, 1, '');
 
       expect(postTweetMock).toHaveBeenCalledWith('Text only tweet', []);
     });
@@ -213,7 +236,7 @@ describe('postTweetForRow()', () => {
       const postTweetMock = jest.fn().mockReturnValue({ id: '1' });
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, ROW, 'Text only tweet', '');
+      ctx.postTweetForRow(mockSheet, ROW, 'Text only tweet', '', 0, 1, '');
 
       expect(postTweetMock).toHaveBeenCalledWith('Text only tweet', []);
     });
@@ -228,7 +251,7 @@ describe('postTweetForRow()', () => {
       const postTweetMock = jest.fn().mockReturnValue({ id: '1' });
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, ROW, 'Tweet', 'https://pbs.twimg.com/media/abc.jpg');
+      ctx.postTweetForRow(mockSheet, ROW, 'Tweet', 'https://pbs.twimg.com/media/abc.jpg', 0, 1, '');
 
       expect(postTweetMock).toHaveBeenCalledWith('Tweet', ['https://pbs.twimg.com/media/abc.jpg']);
     });
@@ -239,7 +262,7 @@ describe('postTweetForRow()', () => {
       const ctx = buildContext(postTweetMock, writtenCells);
 
       const links = 'https://pbs.twimg.com/media/abc.jpg,https://pbs.twimg.com/media/def.jpg';
-      ctx.postTweetForRow(mockSheet, ROW, 'Tweet', links);
+      ctx.postTweetForRow(mockSheet, ROW, 'Tweet', links, 0, 1, '');
 
       expect(postTweetMock).toHaveBeenCalledWith('Tweet', [
         'https://pbs.twimg.com/media/abc.jpg',
@@ -253,7 +276,7 @@ describe('postTweetForRow()', () => {
       const ctx = buildContext(postTweetMock, writtenCells);
 
       const links = '  https://pbs.twimg.com/media/abc.jpg , https://pbs.twimg.com/media/def.jpg  ';
-      ctx.postTweetForRow(mockSheet, ROW, 'Tweet', links);
+      ctx.postTweetForRow(mockSheet, ROW, 'Tweet', links, 0, 1, '');
 
       expect(postTweetMock).toHaveBeenCalledWith('Tweet', [
         'https://pbs.twimg.com/media/abc.jpg',
@@ -266,7 +289,7 @@ describe('postTweetForRow()', () => {
       const postTweetMock = jest.fn().mockReturnValue({ id: '1' });
       const ctx = buildContext(postTweetMock, writtenCells);
 
-      ctx.postTweetForRow(mockSheet, ROW, 'Tweet', 'https://pbs.twimg.com/media/abc.jpg,');
+      ctx.postTweetForRow(mockSheet, ROW, 'Tweet', 'https://pbs.twimg.com/media/abc.jpg,', 0, 1, '');
 
       const mediaUrls = postTweetMock.mock.calls[0][1];
       expect(mediaUrls).toEqual(['https://pbs.twimg.com/media/abc.jpg']);
@@ -278,7 +301,7 @@ describe('postTweetForRow()', () => {
       const ctx = buildContext(postTweetMock, writtenCells);
 
       const links = 'https://img.com/1.jpg,https://img.com/2.jpg,https://img.com/3.jpg';
-      ctx.postTweetForRow(mockSheet, ROW, 'Tweet', links);
+      ctx.postTweetForRow(mockSheet, ROW, 'Tweet', links, 0, 1, '');
 
       expect(postTweetMock).toHaveBeenCalledWith('Tweet', [
         'https://img.com/1.jpg',

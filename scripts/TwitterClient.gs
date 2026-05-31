@@ -405,6 +405,142 @@ function uploadMediaBase64(base64Data) {
 
 
 /**
+ * Returns the TweetScheduler_Media Drive folder, creating it if needed.
+ * The folder ID is cached in Script Properties so we never need to search
+ * by name (which requires the broad 'drive' scope — incompatible with drive.file).
+ * @returns {GoogleAppsScript.Drive.Folder}
+ */
+function _getOrCreateMediaFolder() {
+  var props    = PropertiesService.getScriptProperties();
+  var folderId = props.getProperty('DRIVE_MEDIA_FOLDER_ID');
+
+  if (folderId) {
+    try {
+      return DriveApp.getFolderById(folderId);
+    } catch (e) {
+      // Folder was deleted or inaccessible — fall through to recreate
+      props.deleteProperty('DRIVE_MEDIA_FOLDER_ID');
+    }
+  }
+
+  // Create the folder and cache its ID
+  var folder = DriveApp.createFolder('TweetScheduler_Media');
+  props.setProperty('DRIVE_MEDIA_FOLDER_ID', folder.getId());
+  return folder;
+}
+
+/**
+ * Saves image bytes to the TweetScheduler_Media folder in Google Drive.
+ * @param {number[]} imageBytes  Raw image bytes
+ * @param {string}   filename    File name to use in Drive
+ * @param {string}   mimeType    MIME type (e.g. "image/jpeg")
+ * @returns {{ fileId: string } | { error: string }}
+ */
+function saveImageToDrive(imageBytes, filename, mimeType) {
+  try {
+    var folder = _getOrCreateMediaFolder();
+    var blob   = Utilities.newBlob(imageBytes, mimeType || 'image/jpeg', filename);
+    var file   = folder.createFile(blob);
+    return { fileId: file.getId() };
+  } catch (e) {
+    return { error: 'Drive save failed: ' + e.message };
+  }
+}
+
+/**
+ * Saves a Base64-encoded image to Google Drive.
+ * @param {string} base64Data  Raw Base64 string (no "data:..." prefix)
+ * @param {string} filename    File name to use in Drive
+ * @returns {{ fileId: string } | { error: string }}
+ */
+function saveBase64ImageToDrive(base64Data, filename) {
+  try {
+    var imageBytes = Utilities.base64Decode(base64Data);
+    return saveImageToDrive(imageBytes, filename || 'upload.jpg', 'image/jpeg');
+  } catch (e) {
+    return { error: 'Drive save failed: ' + e.message };
+  }
+}
+
+/**
+ * Fetches an image from a public URL and saves it to Google Drive.
+ * @param {string} imageUrl  Public URL of the image
+ * @param {string} filename  File name to use in Drive
+ * @returns {{ fileId: string } | { error: string }}
+ */
+function saveUrlImageToDrive(imageUrl, filename) {
+  try {
+    var response = UrlFetchApp.fetch(imageUrl, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) {
+      return { error: 'Failed to fetch image: HTTP ' + response.getResponseCode() };
+    }
+    var mimeType = response.getHeaders()['Content-Type'] || 'image/jpeg';
+    var imageBytes = response.getContent();
+    return saveImageToDrive(imageBytes, filename || 'media.jpg', mimeType);
+  } catch (e) {
+    return { error: 'Drive save failed: ' + e.message };
+  }
+}
+
+/**
+ * Reads an image from Google Drive by file ID and uploads it to Twitter.
+ * @param {string} fileId  Google Drive file ID
+ * @returns {{ mediaId: string } | { error: string }}
+ */
+function uploadMediaFromDrive(fileId) {
+  try {
+    var file = DriveApp.getFileById(fileId);
+    var blob = file.getBlob();
+    var imageBytes = blob.getBytes();
+    var base64Image = Utilities.base64Encode(imageBytes);
+
+    var uploadUrl = 'https://upload.twitter.com/1.1/media/upload.json';
+    var authHeader;
+    try {
+      authHeader = buildOAuth1Header('POST', uploadUrl, {});
+    } catch (e) {
+      return { error: 'auth error: ' + e.message };
+    }
+
+    var boundary = '----FormBoundary' + generateNonce();
+    var payload = '--' + boundary + '\r\n' +
+      'Content-Disposition: form-data; name="media_data"\r\n\r\n' +
+      base64Image + '\r\n' +
+      '--' + boundary + '--\r\n';
+
+    var uploadResponse = UrlFetchApp.fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: authHeader,
+        'Content-Type': 'multipart/form-data; boundary=' + boundary
+      },
+      payload: payload,
+      muteHttpExceptions: true
+    });
+
+    var statusCode = uploadResponse.getResponseCode();
+    if (statusCode !== 200 && statusCode !== 201) {
+      var errBody;
+      try { errBody = JSON.parse(uploadResponse.getContentText()); } catch (e) {}
+      var errMsg = (errBody && errBody.errors && errBody.errors[0]) ?
+        errBody.errors[0].message : 'HTTP ' + statusCode;
+      return { error: 'Media upload failed: ' + errMsg };
+    }
+
+    var respBody;
+    try {
+      respBody = JSON.parse(uploadResponse.getContentText());
+    } catch (e) {
+      return { error: 'Invalid response from media upload' };
+    }
+
+    return { mediaId: respBody.media_id_string };
+  } catch (e) {
+    return { error: 'Drive upload error: ' + e.message };
+  }
+}
+
+/**
  * Generates a random nonce string for OAuth.
  * @returns {string}
  */

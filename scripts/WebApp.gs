@@ -159,19 +159,38 @@ function handleFormSubmit(params) {
       }
     }
 
-    // Write new row to sheet
+    // Write new row to sheet.
+    // For scheduled (cron) clone tweets that have media URLs, save each image
+    // to Drive now so Poster never needs to re-fetch from Twitter at post time.
+    var storedResourceLinks = resourceLinks;
+    if (scheduleMode === 'cron' && resourceLinks && resourceLinks !== 'none') {
+      var urls = resourceLinks.split(',').map(function(u) { return u.trim(); }).filter(Boolean);
+      var driveIds = [];
+      for (var di = 0; di < urls.length; di++) {
+        var dr = saveUrlImageToDrive(urls[di], 'media_' + Date.now() + '_' + di + '.jpg');
+        if (!dr.error) {
+          driveIds.push('drive:' + dr.fileId);
+        } else {
+          // Fall back to the original URL if Drive save fails
+          driveIds.push(urls[di]);
+          Logger.log('Drive save failed for ' + urls[di] + ': ' + dr.error);
+        }
+      }
+      storedResourceLinks = driveIds.join(',');
+    }
+
     var sheet    = getOrCreateTweetSheet();
     var rowIndex = _getNewRowIndex(sheet);
 
     writeCell(sheet, rowIndex, COL_TWEET_LINK,     tweetLink);
-    writeCell(sheet, rowIndex, COL_RESOURCE_LINKS, resourceLinks);
+    writeCell(sheet, rowIndex, COL_RESOURCE_LINKS, storedResourceLinks);
     writeCell(sheet, rowIndex, COL_STATUS,         '');
     writeCell(sheet, rowIndex, COL_TITLE,          title);
     writeCell(sheet, rowIndex, COL_MAX_COUNT,      maxCount);
     writeCell(sheet, rowIndex, COL_POST_COUNT,     0);
     writeCell(sheet, rowIndex, COL_CRON,           scheduleMode === 'cron' ? cronExpression : '');
 
-    // Send Now: post immediately
+    // Send Now: post immediately using original resourceLinks (no Drive needed for one-shot)
     if (scheduleMode === 'now') {
       postTweetForRow(sheet, rowIndex, title, resourceLinks);
 
@@ -228,16 +247,15 @@ function handleNewTweet(params) {
       }
     }
 
-    // If a Base64 image was uploaded, upload it to Twitter now and use the
-    // media_id as the resource. For scheduled tweets the media_id is stored
-    // in resourceLinks so the Poster can attach it when the cron fires.
+    // If a Base64 image was uploaded, save it to Drive for durable storage.
+    // Drive file ID is stored as "drive:<fileId>" in col B so Poster can
+    // re-upload to Twitter at post time without hitting the Twitter API again.
     if (imageBase64) {
-      var uploadResult = uploadMediaBase64(imageBase64);
-      if (uploadResult.error) {
-        return { success: false, error: 'Image upload failed: ' + uploadResult.error };
+      var driveResult = saveBase64ImageToDrive(imageBase64, 'upload_' + Date.now() + '.jpg');
+      if (driveResult.error) {
+        return { success: false, error: 'Image save failed: ' + driveResult.error };
       }
-      // Store the media_id in resourceLinks so Poster.gs can attach it
-      resourceLinks = 'media_id:' + uploadResult.mediaId;
+      resourceLinks = 'drive:' + driveResult.fileId;
     }
 
     // Write new row to sheet
@@ -312,5 +330,36 @@ function diagnoseCreds() {
     }
   } catch (e) {
     Logger.log('ERROR: API call threw: ' + e.message);
+  }
+}
+
+/**
+ * Diagnostic: tests Drive access by creating the TweetScheduler_Media folder
+ * (if it doesn't exist) and saving a tiny test file into it.
+ * Run this from the Apps Script editor to confirm Drive integration works.
+ * Check the Execution Log for results.
+ */
+function diagnoseDrive() {
+  try {
+    // 1. Locate or create the folder via the cached-ID helper
+    var folder = _getOrCreateMediaFolder();
+    Logger.log('OK: Folder ready — ' + folder.getName() + ' (id: ' + folder.getId() + ')');
+
+    // 2. Save a tiny test file
+    var testBlob = Utilities.newBlob('test', 'text/plain', 'drive_test.txt');
+    var testFile = folder.createFile(testBlob);
+    Logger.log('OK: Test file saved — id: ' + testFile.getId());
+
+    // 3. Read it back
+    var readBack = DriveApp.getFileById(testFile.getId());
+    Logger.log('OK: Test file read back — name: ' + readBack.getName());
+
+    // 4. Clean up
+    testFile.setTrashed(true);
+    Logger.log('OK: Test file deleted. Drive integration is working correctly.');
+
+  } catch (e) {
+    Logger.log('ERROR: Drive test failed — ' + e.message);
+    Logger.log('Make sure the drive.file scope is in appsscript.json and you have re-authorized.');
   }
 }
