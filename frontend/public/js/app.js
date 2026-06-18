@@ -134,6 +134,177 @@ function resetCronBuilder(prefix) {
 }
 
 // ============================================================
+// Inline cron builder (used by the My Tweets edit form)
+// Uses data-cb attributes instead of element IDs so multiple
+// independent builders can exist on the page at the same time.
+// ============================================================
+
+/**
+ * Parses a 5-field cron expression back to builder field values.
+ * Returns a plain object with: freq, minute, hour, dow, dom, interval.
+ * @param {string} cron
+ * @returns {Object}
+ */
+function parseCronToBuilder(cron) {
+  var d = { freq: 'daily', minute: 0, hour: 9, dow: 1, dom: 1, interval: 5 };
+  if (!cron || !cron.trim()) return d;
+  var f = cron.trim().split(/\s+/);
+  if (f.length !== 5) return d;
+  var min = f[0], hr = f[1], dom = f[2], mon = f[3], dow = f[4];
+
+  // Custom: */N * * * *
+  if (/^\*\/\d+$/.test(min) && hr === '*' && dom === '*' && mon === '*' && dow === '*') {
+    return { freq: 'custom', minute: d.minute, hour: d.hour, dow: d.dow, dom: d.dom,
+             interval: parseInt(min.slice(2), 10) || 5 };
+  }
+  // Hourly: N * * * *
+  if (hr === '*' && dom === '*' && mon === '*' && dow === '*') {
+    return { freq: 'hourly', minute: parseInt(min, 10) || 0, hour: d.hour,
+             dow: d.dow, dom: d.dom, interval: d.interval };
+  }
+  // Weekly: N H * * D
+  if (dom === '*' && mon === '*' && dow !== '*') {
+    return { freq: 'weekly', minute: parseInt(min, 10) || 0, hour: parseInt(hr, 10) || 9,
+             dow: parseInt(dow, 10) || 1, dom: d.dom, interval: d.interval };
+  }
+  // Monthly: N H D * *
+  if (dom !== '*' && mon === '*' && dow === '*') {
+    return { freq: 'monthly', minute: parseInt(min, 10) || 0, hour: parseInt(hr, 10) || 9,
+             dow: d.dow, dom: parseInt(dom, 10) || 1, interval: d.interval };
+  }
+  // Daily (default)
+  return { freq: 'daily', minute: parseInt(min, 10) || 0, hour: parseInt(hr, 10) || 9,
+           dow: d.dow, dom: d.dom, interval: d.interval };
+}
+
+/**
+ * Injects a standalone cron builder into `container`.
+ * Does not use element IDs — queries by data-cb attribute instead.
+ * @param {HTMLElement} container
+ * @param {Object} parsed  - result of parseCronToBuilder()
+ * @returns {{ getCron: function(): string }}
+ */
+function initCronBuilderInEl(container, parsed) {
+  container.innerHTML =
+    '<div class="border border-gray-200 rounded-lg p-4 bg-gray-50">' +
+      '<p class="text-sm font-medium text-gray-700 mb-3">Build your schedule</p>' +
+      // Frequency
+      '<div class="mb-3">' +
+        '<label class="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Repeat</label>' +
+        '<select data-cb="freq" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">' +
+          '<option value="hourly">Every hour</option>' +
+          '<option value="daily">Every day</option>' +
+          '<option value="weekly">Every week</option>' +
+          '<option value="monthly">Every month</option>' +
+          '<option value="custom">Custom interval (every N minutes)</option>' +
+        '</select>' +
+      '</div>' +
+      // Day of week (weekly only)
+      '<div data-cb="dowRow" class="hidden mb-3">' +
+        '<label class="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">On</label>' +
+        '<select data-cb="dow" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">' +
+          '<option value="1">Monday</option><option value="2">Tuesday</option>' +
+          '<option value="3">Wednesday</option><option value="4">Thursday</option>' +
+          '<option value="5">Friday</option><option value="6">Saturday</option>' +
+          '<option value="0">Sunday</option>' +
+        '</select>' +
+      '</div>' +
+      // Day of month (monthly only)
+      '<div data-cb="domRow" class="hidden mb-3">' +
+        '<label class="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">On day</label>' +
+        '<select data-cb="dom" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"></select>' +
+      '</div>' +
+      // Time (daily / weekly / monthly)
+      '<div data-cb="timeRow" class="mb-3">' +
+        '<label class="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">At</label>' +
+        '<div class="flex gap-2 items-center">' +
+          '<select data-cb="hour" class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"></select>' +
+          '<span class="text-gray-400 text-sm">:</span>' +
+          '<select data-cb="minute" class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">' +
+            '<option value="0">00</option><option value="15">15</option>' +
+            '<option value="30">30</option><option value="45">45</option>' +
+          '</select>' +
+        '</div>' +
+      '</div>' +
+      // Custom interval
+      '<div data-cb="intervalRow" class="hidden mb-3">' +
+        '<label class="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Every</label>' +
+        '<select data-cb="interval" class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">' +
+          '<option value="5">5 minutes</option><option value="10">10 minutes</option>' +
+          '<option value="15">15 minutes</option><option value="30">30 minutes</option>' +
+        '</select>' +
+      '</div>' +
+      // Expression preview
+      '<div class="mt-3 flex items-center gap-2 bg-white border border-gray-200 rounded-md px-3 py-2">' +
+        '<span class="text-xs text-gray-400 shrink-0">Cron:</span>' +
+        '<code data-cb="preview" class="text-sm font-mono text-blue-600 font-medium"></code>' +
+      '</div>' +
+    '</div>';
+
+  function q(attr) { return container.querySelector('[data-cb="' + attr + '"]'); }
+
+  // Populate hour select (0–23)
+  var hourSel = q('hour');
+  for (var h = 0; h < 24; h++) {
+    var hOpt = document.createElement('option');
+    hOpt.value = h;
+    hOpt.textContent = (h < 10 ? '0' : '') + h + ':00';
+    hourSel.appendChild(hOpt);
+  }
+
+  // Populate dom select (1–28)
+  var domSel = q('dom');
+  for (var d = 1; d <= 28; d++) {
+    var dOpt = document.createElement('option');
+    dOpt.value = d;
+    dOpt.textContent = d;
+    domSel.appendChild(dOpt);
+  }
+
+  function buildExpr() {
+    var freq     = q('freq').value;
+    var hour     = q('hour').value;
+    var minute   = q('minute').value;
+    var dow      = q('dow').value;
+    var dom      = q('dom').value;
+    var interval = q('interval').value;
+    switch (freq) {
+      case 'hourly':  return minute + ' * * * *';
+      case 'daily':   return minute + ' ' + hour + ' * * *';
+      case 'weekly':  return minute + ' ' + hour + ' * * ' + dow;
+      case 'monthly': return minute + ' ' + hour + ' ' + dom + ' * *';
+      case 'custom':  return '*/' + interval + ' * * * *';
+      default:        return minute + ' ' + hour + ' * * *';
+    }
+  }
+
+  function update() {
+    var freq = q('freq').value;
+    q('dowRow').classList.toggle('hidden',      freq !== 'weekly');
+    q('domRow').classList.toggle('hidden',      freq !== 'monthly');
+    q('timeRow').classList.toggle('hidden',     freq === 'custom' || freq === 'hourly');
+    q('intervalRow').classList.toggle('hidden', freq !== 'custom');
+    q('preview').textContent = buildExpr();
+  }
+
+  // Set initial values from parsed expression
+  q('freq').value     = parsed.freq;
+  q('hour').value     = parsed.hour;
+  q('minute').value   = parsed.minute;
+  q('dow').value      = parsed.dow;
+  q('dom').value      = parsed.dom;
+  q('interval').value = parsed.interval;
+
+  ['freq', 'hour', 'minute', 'dow', 'dom', 'interval'].forEach(function(attr) {
+    q(attr).addEventListener('change', update);
+  });
+
+  update();
+
+  return { getCron: buildExpr };
+}
+
+// ============================================================
 // Clone Tweet tab
 // ============================================================
 
@@ -545,15 +716,21 @@ function resetCronBuilder(prefix) {
           '<label class="block text-xs font-medium text-gray-500 mb-1">Resource Links <span class="font-normal text-gray-400">(URL or drive:fileId, comma-separated)</span></label>' +
           '<input type="text" class="js-edit-resource w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">' +
         '</div>' +
-        '<div class="flex gap-3">' +
-          '<div class="flex-1">' +
-            '<label class="block text-xs font-medium text-gray-500 mb-1">Cron Expression</label>' +
-            '<input type="text" class="js-edit-cron w-full px-3 py-2 text-sm border border-gray-300 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" placeholder="e.g. 0 9 * * *">' +
+        '<div>' +
+          '<label class="block text-xs font-medium text-gray-500 mb-2">Schedule</label>' +
+          '<div class="flex gap-6 mb-2">' +
+            '<label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">' +
+              '<input type="radio" class="js-sched-now accent-blue-500" name="viewSched_' + tweet.rowIndex + '" value="now"> Active (no repeat)' +
+            '</label>' +
+            '<label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">' +
+              '<input type="radio" class="js-sched-cron accent-blue-500" name="viewSched_' + tweet.rowIndex + '" value="cron"> Schedule with Cron' +
+            '</label>' +
           '</div>' +
-          '<div class="w-28">' +
-            '<label class="block text-xs font-medium text-gray-500 mb-1">Max Posts</label>' +
-            '<input type="number" class="js-edit-max w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" min="0" placeholder="0">' +
-          '</div>' +
+          '<div class="js-edit-cron-builder"></div>' +
+        '</div>' +
+        '<div>' +
+          '<label class="block text-xs font-medium text-gray-500 mb-1">Max Posts <span class="font-normal text-gray-400">(0 = unlimited)</span></label>' +
+          '<input type="number" class="js-edit-max w-28 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" min="0" placeholder="0">' +
         '</div>' +
         '<div>' +
           '<label class="block text-xs font-medium text-gray-500 mb-1">Status</label>' +
@@ -587,9 +764,27 @@ function resetCronBuilder(prefix) {
     // Pre-fill edit form
     div.querySelector('.js-edit-title').value    = tweet.title         || '';
     div.querySelector('.js-edit-resource').value = tweet.resourceLinks || '';
-    div.querySelector('.js-edit-cron').value     = tweet.cron          || '';
     div.querySelector('.js-edit-max').value      = tweet.maxCount      || 0;
     div.querySelector('.js-edit-status').value   = tweet.status === 'sent' ? 'sent' : '';
+
+    // Initialize inline cron builder
+    var hasCron       = !!(tweet.cron && tweet.cron.trim());
+    var schedNowRadio = div.querySelector('.js-sched-now');
+    var schedCronRadio = div.querySelector('.js-sched-cron');
+    var cronBuilderEl = div.querySelector('.js-edit-cron-builder');
+
+    schedNowRadio.checked  = !hasCron;
+    schedCronRadio.checked = hasCron;
+
+    var cronBuilder = initCronBuilderInEl(cronBuilderEl, parseCronToBuilder(tweet.cron || ''));
+    cronBuilderEl.classList.toggle('hidden', !hasCron);
+
+    schedNowRadio.addEventListener('change', function() {
+      cronBuilderEl.classList.add('hidden');
+    });
+    schedCronRadio.addEventListener('change', function() {
+      cronBuilderEl.classList.remove('hidden');
+    });
 
     // If there's a current error, show a note explaining the reset path
     if (tweet.status && tweet.status.indexOf('error:') === 0) {
@@ -644,17 +839,12 @@ function resetCronBuilder(prefix) {
     saveBtn.addEventListener('click', function() {
       var title         = div.querySelector('.js-edit-title').value.trim();
       var resourceLinks = div.querySelector('.js-edit-resource').value.trim();
-      var cron          = div.querySelector('.js-edit-cron').value.trim();
+      var cron          = div.querySelector('.js-sched-now').checked ? '' : cronBuilder.getCron();
       var maxCount      = parseInt(div.querySelector('.js-edit-max').value, 10) || 0;
       var status        = div.querySelector('.js-edit-status').value;
 
       if (!title) {
         showFeedback(itemFeedback, 'Tweet text is required.', 'error');
-        return;
-      }
-
-      if (cron && validateCronExpression(cron)) {
-        showFeedback(itemFeedback, validateCronExpression(cron), 'error');
         return;
       }
 
