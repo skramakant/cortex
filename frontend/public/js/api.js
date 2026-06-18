@@ -69,3 +69,30 @@ async function submitCloneTweet(params) {
 async function submitNewTweet(params) {
   return gasPost({ action: 'newTweet', ...params });
 }
+
+/**
+ * Fetches all tweet rows from the sheet.
+ * @returns {Promise<{success: boolean, tweets?: Array<Object>, error?: string}>}
+ */
+async function listTweets() {
+  return gasPost({ action: 'listTweets' });
+}
+
+/**
+ * Updates editable fields of an existing tweet row.
+ * @param {number} rowIndex  1-based sheet row number
+ * @param {{ title?: string, resourceLinks?: string, cron?: string, maxCount?: number, status?: string }} data
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function updateTweet(rowIndex, data) {
+  return gasPost({ action: 'updateTweet', rowIndex: rowIndex, ...data });
+}
+
+/**
+ * Deletes a tweet row by its 1-based sheet row number.
+ * @param {number} rowIndex
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function deleteTweet(rowIndex) {
+  return gasPost({ action: 'deleteTweet', rowIndex: rowIndex });
+}

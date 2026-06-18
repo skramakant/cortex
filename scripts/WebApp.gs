@@ -49,6 +49,12 @@ function doPost(e) {
       result = handleFormSubmit(params);
     } else if (action === 'newTweet') {
       result = handleNewTweet(params);
+    } else if (action === 'listTweets') {
+      result = handleListTweets();
+    } else if (action === 'updateTweet') {
+      result = handleUpdateTweet(params);
+    } else if (action === 'deleteTweet') {
+      result = handleDeleteTweet(params);
     } else {
       result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -361,5 +367,89 @@ function diagnoseDrive() {
   } catch (e) {
     Logger.log('ERROR: Drive test failed — ' + e.message);
     Logger.log('Make sure the drive.file scope is in appsscript.json and you have re-authorized.');
+  }
+}
+
+// ============================================================
+// View / Edit / Delete tweet handlers
+// ============================================================
+
+/**
+ * Returns all tweet rows as an array of objects with 1-based rowIndex values.
+ * @returns {{ success: boolean, tweets?: Array<Object>, error?: string }}
+ */
+function handleListTweets() {
+  try {
+    var sheet  = getOrCreateTweetSheet();
+    var rows   = getAllRows(sheet);
+    var tweets = rows.map(function(row, index) {
+      return {
+        rowIndex:      index + 2,                       // +1 for header, +1 for 0→1 index
+        tweetLink:     String(row[COL_TWEET_LINK     - 1] || ''),
+        resourceLinks: String(row[COL_RESOURCE_LINKS - 1] || ''),
+        status:        String(row[COL_STATUS         - 1] || ''),
+        title:         String(row[COL_TITLE          - 1] || ''),
+        cron:          String(row[COL_CRON           - 1] || ''),
+        maxCount:      Number(row[COL_MAX_COUNT      - 1] || 0),
+        postCount:     Number(row[COL_POST_COUNT     - 1] || 0),
+      };
+    });
+    return { success: true, tweets: tweets };
+  } catch (err) {
+    return { success: false, error: 'Failed to list tweets: ' + err.message };
+  }
+}
+
+/**
+ * Updates editable fields of an existing tweet row.
+ * Only fields present in params are written; others are left untouched.
+ * @param {{ rowIndex: number, title?: string, resourceLinks?: string, cron?: string, maxCount?: number, status?: string }} params
+ * @returns {{ success: boolean, message?: string, error?: string }}
+ */
+function handleUpdateTweet(params) {
+  try {
+    var rowIndex = Number(params.rowIndex);
+    if (!rowIndex || rowIndex < 2) {
+      return { success: false, error: 'Invalid row index.' };
+    }
+    var sheet   = getOrCreateTweetSheet();
+    var lastRow = sheet.getLastRow();
+    if (rowIndex > lastRow) {
+      return { success: false, error: 'Row does not exist.' };
+    }
+
+    if (params.title         !== undefined) writeCell(sheet, rowIndex, COL_TITLE,          params.title);
+    if (params.resourceLinks !== undefined) writeCell(sheet, rowIndex, COL_RESOURCE_LINKS, params.resourceLinks || 'none');
+    if (params.cron          !== undefined) writeCell(sheet, rowIndex, COL_CRON,           params.cron);
+    if (params.maxCount      !== undefined) writeCell(sheet, rowIndex, COL_MAX_COUNT,      Number(params.maxCount) || 0);
+    if (params.status        !== undefined) writeCell(sheet, rowIndex, COL_STATUS,         params.status);
+
+    return { success: true, message: 'Tweet updated successfully.' };
+  } catch (err) {
+    return { success: false, error: 'Failed to update tweet: ' + err.message };
+  }
+}
+
+/**
+ * Deletes a tweet row by its 1-based row index.
+ * @param {{ rowIndex: number }} params
+ * @returns {{ success: boolean, message?: string, error?: string }}
+ */
+function handleDeleteTweet(params) {
+  try {
+    var rowIndex = Number(params.rowIndex);
+    if (!rowIndex || rowIndex < 2) {
+      return { success: false, error: 'Invalid row index.' };
+    }
+    var sheet   = getOrCreateTweetSheet();
+    var lastRow = sheet.getLastRow();
+    if (rowIndex > lastRow) {
+      return { success: false, error: 'Row does not exist.' };
+    }
+
+    sheet.deleteRow(rowIndex);
+    return { success: true, message: 'Tweet deleted successfully.' };
+  } catch (err) {
+    return { success: false, error: 'Failed to delete tweet: ' + err.message };
   }
 }
