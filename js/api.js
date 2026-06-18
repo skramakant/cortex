@@ -1,13 +1,13 @@
 /**
  * api.js — All GAS API calls.
- * https://script.google.com/macros/s/AKfycbwH_izGrGcENi8VceCS0EUQG_1K8_R5G583y1qCnUUuf_cv0oPt6y-ciz31S4xv1kxr/exec and 6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259 are replaced at build time by inject-env.js.
+ * https://script.google.com/macros/s/AKfycbzPKZwjP-3eDs4VP19FXlxoQjVdZkj5jpDi1ezlLv96b1em9qfe9BLU5aCv5u1qd6Ju-Q/exec and 6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259 are replaced at build time by inject-env.js.
  * GAS_URL and API_KEY are stored as GitHub Secrets and injected by GitHub Actions.
  *
  * CORS note: Content-Type: text/plain is a "simple request" — no preflight.
  * GAS receives the raw body in e.postData.contents and we JSON.parse it there.
  */
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwH_izGrGcENi8VceCS0EUQG_1K8_R5G583y1qCnUUuf_cv0oPt6y-ciz31S4xv1kxr/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzPKZwjP-3eDs4VP19FXlxoQjVdZkj5jpDi1ezlLv96b1em9qfe9BLU5aCv5u1qd6Ju-Q/exec';
 const API_KEY = '6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259';
 
 /**
@@ -95,4 +95,13 @@ async function updateTweet(rowIndex, data) {
  */
 async function deleteTweet(rowIndex) {
   return gasPost({ action: 'deleteTweet', rowIndex: rowIndex });
+}
+
+/**
+ * Verifies a password against the APP_PASSWORD script property.
+ * @param {string} password
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function verifyPassword(password) {
+  return gasPost({ action: 'verifyPassword', password: password });
 }
