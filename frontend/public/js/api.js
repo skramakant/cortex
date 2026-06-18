@@ -96,3 +96,12 @@ async function updateTweet(rowIndex, data) {
 async function deleteTweet(rowIndex) {
   return gasPost({ action: 'deleteTweet', rowIndex: rowIndex });
 }
+
+/**
+ * Verifies a password against the APP_PASSWORD script property.
+ * @param {string} password
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function verifyPassword(password) {
+  return gasPost({ action: 'verifyPassword', password: password });
+}

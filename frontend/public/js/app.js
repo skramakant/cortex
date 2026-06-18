@@ -889,6 +889,89 @@ function initCronBuilderInEl(container, parsed) {
 }());
 
 // ============================================================
+// Authentication — login screen + 24 h localStorage session
+// ============================================================
+
+var AUTH_KEY = 'tweetgen_auth';
+var AUTH_TTL = 24 * 60 * 60 * 1000; // 24 hours in ms
+
+/** Returns true if a valid auth timestamp exists in localStorage. */
+function isAuthenticated() {
+  try {
+    var stored = localStorage.getItem(AUTH_KEY);
+    if (!stored) return false;
+    var data = JSON.parse(stored);
+    return !!(data && data.ts && (Date.now() - data.ts < AUTH_TTL));
+  } catch (e) {
+    return false;
+  }
+}
+
+/** Writes the current timestamp to localStorage to start a 24 h session. */
+function setAuthenticated() {
+  localStorage.setItem(AUTH_KEY, JSON.stringify({ ts: Date.now() }));
+}
+
+/** Hides the login screen and reveals the main app. */
+function showApp() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('mainApp').classList.remove('hidden');
+}
+
+/** Hides the main app and shows the login screen. */
+function showLogin() {
+  document.getElementById('mainApp').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+}
+
+/** Wires up the login form — password submit via button click or Enter key. */
+function initLoginForm() {
+  var passwordInput = document.getElementById('loginPassword');
+  var loginBtn      = document.getElementById('loginBtn');
+  var loadingEl     = document.getElementById('loginLoading');
+  var feedbackEl    = document.getElementById('loginFeedback');
+
+  function doLogin() {
+    var password = passwordInput.value;
+    if (!password) {
+      showFeedback(feedbackEl, 'Password is required.', 'error');
+      return;
+    }
+
+    loginBtn.disabled = true;
+    hideFeedback(feedbackEl);
+    loadingEl.classList.remove('hidden');
+
+    verifyPassword(password)
+      .then(function(result) {
+        if (result.success) {
+          setAuthenticated();
+          showApp();
+          switchTab('clone');
+        } else {
+          showFeedback(feedbackEl, result.error || 'Incorrect password.', 'error');
+          passwordInput.value = '';
+          passwordInput.focus();
+        }
+      })
+      .catch(function(err) {
+        showFeedback(feedbackEl, 'Unexpected error: ' + err.message, 'error');
+      })
+      .finally(function() {
+        loginBtn.disabled = false;
+        loadingEl.classList.add('hidden');
+      });
+  }
+
+  loginBtn.addEventListener('click', doLogin);
+  passwordInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  passwordInput.focus();
+}
+
+// ============================================================
 // Bootstrap
 // ============================================================
 
@@ -910,5 +993,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  switchTab('clone');
+  // Auth gate: show app immediately if a valid session exists, otherwise show login
+  if (isAuthenticated()) {
+    showApp();
+    switchTab('clone');
+  } else {
+    initLoginForm();
+  }
 });

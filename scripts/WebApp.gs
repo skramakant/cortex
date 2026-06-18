@@ -55,6 +55,8 @@ function doPost(e) {
       result = handleUpdateTweet(params);
     } else if (action === 'deleteTweet') {
       result = handleDeleteTweet(params);
+    } else if (action === 'verifyPassword') {
+      result = handleVerifyPassword(params);
     } else {
       result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -451,5 +453,27 @@ function handleDeleteTweet(params) {
     return { success: true, message: 'Tweet deleted successfully.' };
   } catch (err) {
     return { success: false, error: 'Failed to delete tweet: ' + err.message };
+  }
+}
+
+/**
+ * Verifies the submitted password against the APP_PASSWORD script property.
+ * Called before the API key check is relevant — this is a separate gate
+ * for the login screen.
+ * @param {{ password: string }} params
+ * @returns {{ success: boolean, message?: string, error?: string }}
+ */
+function handleVerifyPassword(params) {
+  try {
+    var expected = PropertiesService.getScriptProperties().getProperty('APP_PASSWORD');
+    if (!expected) {
+      return { success: false, error: 'Password not configured on server. Set APP_PASSWORD in Script Properties.' };
+    }
+    if (params.password !== expected) {
+      return { success: false, error: 'Incorrect password.' };
+    }
+    return { success: true, message: 'Authenticated.' };
+  } catch (err) {
+    return { success: false, error: 'Server error: ' + err.message };
   }
 }
