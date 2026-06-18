@@ -304,6 +304,30 @@ function initCronBuilderInEl(container, parsed) {
   return { getCron: buildExpr };
 }
 
+/**
+ * Converts a 5-field cron expression to a plain-English string.
+ * Uses parseCronToBuilder() for the heavy lifting.
+ * Falls back to the raw expression if the format is unrecognised.
+ * @param {string} cron
+ * @returns {string}
+ */
+function cronToHuman(cron) {
+  if (!cron || !cron.trim()) return '';
+  var p    = parseCronToBuilder(cron);
+  var DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  var pad  = function(n) { return (n < 10 ? '0' : '') + n; };
+  var time = pad(p.hour) + ':' + pad(p.minute);
+
+  switch (p.freq) {
+    case 'hourly':  return 'Every hour' + (p.minute > 0 ? ' at :' + pad(p.minute) : '');
+    case 'daily':   return 'Every day at ' + time;
+    case 'weekly':  return 'Every ' + (DAYS[p.dow] || 'week') + ' at ' + time;
+    case 'monthly': return 'Monthly on day ' + p.dom + ' at ' + time;
+    case 'custom':  return 'Every ' + p.interval + ' min';
+    default:        return cron; // unrecognised — show raw
+  }
+}
+
 // ============================================================
 // Clone Tweet tab
 // ============================================================
@@ -694,7 +718,7 @@ function initCronBuilderInEl(container, parsed) {
           '<p class="js-tweet-text text-sm text-gray-800 line-clamp-2 break-words"></p>' +
           '<div class="flex flex-wrap items-center gap-2 mt-1.5">' +
             '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + badgeClass + '">' + escapeHtml(statusKey) + '</span>' +
-            (tweet.cron    ? '<span class="js-cron-display text-xs text-gray-400 font-mono"></span>' : '') +
+            (tweet.cron    ? '<span class="js-cron-display text-xs text-gray-400"></span>' : '') +
             (postCountText ? '<span class="text-xs text-gray-400">' + escapeHtml(postCountText) + '</span>' : '') +
           '</div>' +
           (tweet.tweetLink ? '<a class="js-source-link text-xs text-blue-400 hover:underline mt-1 block truncate" target="_blank" rel="noopener noreferrer"></a>' : '') +
@@ -750,7 +774,7 @@ function initCronBuilderInEl(container, parsed) {
     // Set text content safely (avoids innerHTML XSS)
     div.querySelector('.js-tweet-text').textContent = tweet.title || '(no text)';
     if (tweet.cron) {
-      div.querySelector('.js-cron-display').textContent = tweet.cron;
+      div.querySelector('.js-cron-display').textContent = cronToHuman(tweet.cron);
     }
     if (tweet.tweetLink) {
       var link     = div.querySelector('.js-source-link');
