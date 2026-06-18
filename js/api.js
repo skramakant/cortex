@@ -1,13 +1,13 @@
 /**
  * api.js — All GAS API calls.
- * https://script.google.com/macros/s/AKfycbzauCDotP1KgaqFXQgIx6cSfkBnQD2Km0T-w6cVUebRw9OjXlmIWyB944hGQUZdjmKCcw/exec and 6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259 are replaced at build time by inject-env.js.
+ * https://script.google.com/macros/s/AKfycbwH_izGrGcENi8VceCS0EUQG_1K8_R5G583y1qCnUUuf_cv0oPt6y-ciz31S4xv1kxr/exec and 6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259 are replaced at build time by inject-env.js.
  * GAS_URL and API_KEY are stored as GitHub Secrets and injected by GitHub Actions.
  *
  * CORS note: Content-Type: text/plain is a "simple request" — no preflight.
  * GAS receives the raw body in e.postData.contents and we JSON.parse it there.
  */
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzauCDotP1KgaqFXQgIx6cSfkBnQD2Km0T-w6cVUebRw9OjXlmIWyB944hGQUZdjmKCcw/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwH_izGrGcENi8VceCS0EUQG_1K8_R5G583y1qCnUUuf_cv0oPt6y-ciz31S4xv1kxr/exec';
 const API_KEY = '6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259';
 
 /**
@@ -68,4 +68,31 @@ async function submitCloneTweet(params) {
  */
 async function submitNewTweet(params) {
   return gasPost({ action: 'newTweet', ...params });
+}
+
+/**
+ * Fetches all tweet rows from the sheet.
+ * @returns {Promise<{success: boolean, tweets?: Array<Object>, error?: string}>}
+ */
+async function listTweets() {
+  return gasPost({ action: 'listTweets' });
+}
+
+/**
+ * Updates editable fields of an existing tweet row.
+ * @param {number} rowIndex  1-based sheet row number
+ * @param {{ title?: string, resourceLinks?: string, cron?: string, maxCount?: number, status?: string }} data
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function updateTweet(rowIndex, data) {
+  return gasPost({ action: 'updateTweet', rowIndex: rowIndex, ...data });
+}
+
+/**
+ * Deletes a tweet row by its 1-based sheet row number.
+ * @param {number} rowIndex
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function deleteTweet(rowIndex) {
+  return gasPost({ action: 'deleteTweet', rowIndex: rowIndex });
 }
