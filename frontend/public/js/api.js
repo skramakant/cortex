@@ -132,3 +132,13 @@ async function approveTweet(rowIndex, tweetDraft) {
 async function rejectTweet(rowIndex) {
   return gasPost({ action: 'rejectTweet', rowIndex: rowIndex });
 }
+
+/**
+ * Marks a pending row as approved without posting to X.
+ * Used with the Copy & Approve flow where the user posts manually.
+ * @param {number} rowIndex
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function markApproved(rowIndex) {
+  return gasPost({ action: 'markApproved', rowIndex: rowIndex });
+}

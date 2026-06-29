@@ -63,6 +63,8 @@ function doPost(e) {
       result = handleApproveTweet(params);
     } else if (action === 'rejectTweet') {
       result = handleRejectTweet(params);
+    } else if (action === 'markApproved') {
+      result = handleMarkApproved(params);
     } else {
       result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -554,6 +556,26 @@ function handleRejectTweet(params) {
     updateAutoTweetRow(sheet, rowIndex, 'rejected');
 
     return { success: true, message: 'Article rejected.' };
+  } catch (err) {
+    return { success: false, error: 'Unexpected error: ' + err.message };
+  }
+}
+
+/**
+ * Marks a row as 'approved' without posting to X.
+ * Used when the user copies the tweet and posts manually via the X app.
+ * @param {{ rowIndex: number }} params
+ * @returns {{ success: boolean, message?: string, error?: string }}
+ */
+function handleMarkApproved(params) {
+  try {
+    var rowIndex = Number(params.rowIndex);
+    if (!rowIndex || rowIndex < 2) {
+      return { success: false, error: 'Invalid row index.' };
+    }
+    var sheet = getOrCreateAutoTweetSheet();
+    updateAutoTweetRow(sheet, rowIndex, 'approved');
+    return { success: true, message: 'Marked as approved.' };
   } catch (err) {
     return { success: false, error: 'Unexpected error: ' + err.message };
   }
