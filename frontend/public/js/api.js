@@ -105,3 +105,30 @@ async function deleteTweet(rowIndex) {
 async function verifyPassword(password) {
   return gasPost({ action: 'verifyPassword', password: password });
 }
+
+/**
+ * Fetches all pending auto-tweet items from the auto_tweets sheet.
+ * @returns {Promise<{success: boolean, items?: Array<Object>, error?: string}>}
+ */
+async function listPending() {
+  return gasPost({ action: 'listPending' });
+}
+
+/**
+ * Approves a pending item — posts the tweet and marks it as approved.
+ * @param {number} rowIndex    1-based sheet row number
+ * @param {string} tweetDraft  Final tweet text (may have been edited by user)
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function approveTweet(rowIndex, tweetDraft) {
+  return gasPost({ action: 'approveTweet', rowIndex: rowIndex, tweetDraft: tweetDraft });
+}
+
+/**
+ * Rejects a pending item — marks it as rejected, no tweet posted.
+ * @param {number} rowIndex
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function rejectTweet(rowIndex) {
+  return gasPost({ action: 'rejectTweet', rowIndex: rowIndex });
+}

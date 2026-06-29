@@ -57,6 +57,12 @@ function doPost(e) {
       result = handleDeleteTweet(params);
     } else if (action === 'verifyPassword') {
       result = handleVerifyPassword(params);
+    } else if (action === 'listPending') {
+      result = handleListPending();
+    } else if (action === 'approveTweet') {
+      result = handleApproveTweet(params);
+    } else if (action === 'rejectTweet') {
+      result = handleRejectTweet(params);
     } else {
       result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -475,5 +481,79 @@ function handleVerifyPassword(params) {
     return { success: true, message: 'Authenticated.' };
   } catch (err) {
     return { success: false, error: 'Server error: ' + err.message };
+  }
+}
+
+// ============================================================
+// Auto-tweet pipeline handlers (RSS → Gemini → approval queue)
+// ============================================================
+
+/**
+ * Returns all rows with status 'pending' from the auto_tweets sheet.
+ * @returns {{ success: boolean, items?: Array<Object>, error?: string }}
+ */
+function handleListPending() {
+  try {
+    var sheet   = getOrCreateAutoTweetSheet();
+    var pending = getPendingRows(sheet);
+    return { success: true, items: pending };
+  } catch (err) {
+    return { success: false, error: 'Failed to list pending: ' + err.message };
+  }
+}
+
+/**
+ * Posts the tweet draft to X and marks the row as 'approved'.
+ * Accepts an updated tweetDraft in case the user edited it in the UI.
+ * @param {{ rowIndex: number, tweetDraft: string }} params
+ * @returns {{ success: boolean, message?: string, error?: string }}
+ */
+function handleApproveTweet(params) {
+  try {
+    var rowIndex   = Number(params.rowIndex);
+    var tweetDraft = String(params.tweetDraft || '').trim();
+
+    if (!rowIndex || rowIndex < 2) {
+      return { success: false, error: 'Invalid row index.' };
+    }
+    if (!tweetDraft) {
+      return { success: false, error: 'Tweet text is required.' };
+    }
+
+    // Post to X
+    var postResult = postTweet(tweetDraft, []);
+    if (postResult.error) {
+      return { success: false, error: 'Failed to post tweet: ' + postResult.error };
+    }
+
+    // Persist the (possibly edited) draft and mark approved
+    var sheet = getOrCreateAutoTweetSheet();
+    sheet.getRange(rowIndex, AT_COL_TWEET_DRAFT).setValue(tweetDraft);
+    updateAutoTweetRow(sheet, rowIndex, 'approved');
+
+    return { success: true, message: 'Tweet posted successfully.' };
+  } catch (err) {
+    return { success: false, error: 'Unexpected error: ' + err.message };
+  }
+}
+
+/**
+ * Marks a pending row as 'rejected' — no tweet is posted.
+ * @param {{ rowIndex: number }} params
+ * @returns {{ success: boolean, message?: string, error?: string }}
+ */
+function handleRejectTweet(params) {
+  try {
+    var rowIndex = Number(params.rowIndex);
+    if (!rowIndex || rowIndex < 2) {
+      return { success: false, error: 'Invalid row index.' };
+    }
+
+    var sheet = getOrCreateAutoTweetSheet();
+    updateAutoTweetRow(sheet, rowIndex, 'rejected');
+
+    return { success: true, message: 'Article rejected.' };
+  } catch (err) {
+    return { success: false, error: 'Unexpected error: ' + err.message };
   }
 }
