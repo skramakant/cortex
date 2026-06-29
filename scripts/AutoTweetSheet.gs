@@ -19,6 +19,7 @@ var AT_COL_TWEET_DRAFT  = 4;
 var AT_COL_STATUS       = 5;
 var AT_COL_FETCHED_AT   = 6;
 var AT_COL_ACTIONED_AT  = 7;
+var AT_COL_CATEGORY     = 8;
 
 /**
  * Returns the auto_tweets sheet, creating it with headers if it doesn't exist.
@@ -29,20 +30,21 @@ function getOrCreateAutoTweetSheet() {
   var sheet = ss.getSheetByName('auto_tweets');
   if (!sheet) {
     sheet = ss.insertSheet('auto_tweets');
-    sheet.getRange(1, 1, 1, 7).setValues([[
+    sheet.getRange(1, 1, 1, 8).setValues([[
       'article url',
       'source',
       'article title',
       'tweet draft',
       'status',
       'fetched at',
-      'actioned at'
+      'actioned at',
+      'category'
     ]]);
-    // Freeze header row and widen columns for readability
     sheet.setFrozenRows(1);
     sheet.setColumnWidth(AT_COL_ARTICLE_URL,  300);
     sheet.setColumnWidth(AT_COL_TITLE,        300);
     sheet.setColumnWidth(AT_COL_TWEET_DRAFT,  350);
+    sheet.setColumnWidth(AT_COL_CATEGORY,     140);
   }
   return sheet;
 }
@@ -73,17 +75,18 @@ function isArticleAlreadySeen(sheet, articleUrl) {
  * @param {string} tweetDraft
  * @returns {number}  1-based row index of the inserted row
  */
-function addPendingArticle(sheet, articleUrl, source, title, tweetDraft) {
+function addPendingArticle(sheet, articleUrl, source, title, tweetDraft, category) {
   var rowIndex = sheet.getLastRow() + 1;
   var now      = new Date().toISOString();
-  sheet.getRange(rowIndex, 1, 1, 7).setValues([[
+  sheet.getRange(rowIndex, 1, 1, 8).setValues([[
     articleUrl,
     source,
     title,
     tweetDraft,
     'pending',
     now,
-    ''
+    '',
+    category || ''
   ]]);
   return rowIndex;
 }
@@ -97,7 +100,7 @@ function getPendingRows(sheet) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
 
-  var rows    = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  var rows    = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
   var pending = [];
 
   rows.forEach(function(row, i) {
@@ -110,6 +113,7 @@ function getPendingRows(sheet) {
         tweetDraft: String(row[AT_COL_TWEET_DRAFT - 1] || ''),
         status:     'pending',
         fetchedAt:  String(row[AT_COL_FETCHED_AT  - 1] || ''),
+        category:   String(row[AT_COL_CATEGORY    - 1] || ''),
       });
     }
   });
@@ -126,4 +130,42 @@ function getPendingRows(sheet) {
 function updateAutoTweetRow(sheet, rowIndex, status) {
   sheet.getRange(rowIndex, AT_COL_STATUS).setValue(status);
   sheet.getRange(rowIndex, AT_COL_ACTIONED_AT).setValue(new Date().toISOString());
+}
+
+/**
+ * Deletes rows from the auto_tweets sheet where:
+ *   - status is 'rejected'
+ *   - actioned_at is older than `daysOld` days ago
+ *
+ * Iterates from the bottom up to avoid row-index shifting during deletion.
+ *
+ * @param {number} daysOld  Rows older than this many days are deleted (default 7)
+ */
+function cleanupOldRejectedRows(daysOld) {
+  daysOld = daysOld || 7;
+  var sheet   = getOrCreateAutoTweetSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  var cutoff  = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000);
+  var rows    = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  var deleted = 0;
+
+  // Iterate bottom-up so deleting a row doesn't shift the indices we haven't visited yet
+  for (var i = rows.length - 1; i >= 0; i--) {
+    var status     = String(rows[i][AT_COL_STATUS      - 1] || '');
+    var actionedAt = rows[i][AT_COL_ACTIONED_AT - 1];
+
+    if (status !== 'rejected') continue;
+
+    var actionedDate = actionedAt ? new Date(actionedAt) : null;
+    if (!actionedDate || isNaN(actionedDate.getTime())) continue;
+
+    if (actionedDate < cutoff) {
+      sheet.deleteRow(i + 2); // +2: +1 for header, +1 for 0-based index
+      deleted++;
+    }
+  }
+
+  Logger.log('[Cleanup] Deleted ' + deleted + ' rejected row(s) older than ' + daysOld + ' days.');
 }

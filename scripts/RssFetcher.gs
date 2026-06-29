@@ -88,8 +88,12 @@ function fetchAndQueueFromFeed(sheet, sourceName, feedUrl) {
       continue;
     }
 
-    // Generate tweet draft via Gemini
-    var gen = generateTweetWithGemini(title);
+    // Fetch article content for richer context — fall back to title-only if it fails
+    var articleText = fetchArticleText(link);
+    Logger.log('[RssFetcher] Article text length: ' + articleText.length + ' chars for: ' + title);
+
+    // Generate tweet draft via Groq
+    var gen = generateTweetWithGemini(title, articleText);
     if (gen.error) {
       Logger.log('[RssFetcher] Gemini error for "' + title + '": ' + gen.error + ' — skipping, will retry next run.');
       // Don't queue articles with no draft — they'll be picked up on the next run
@@ -100,7 +104,7 @@ function fetchAndQueueFromFeed(sheet, sourceName, feedUrl) {
       continue;
     }
 
-    addPendingArticle(sheet, link, sourceName, title, gen.tweet);
+    addPendingArticle(sheet, link, sourceName, title, gen.tweet, gen.category || '');
     Logger.log('[RssFetcher] Queued: ' + title);
     queued++;
 
@@ -151,44 +155,103 @@ function _childText(parent, name) {
   return child ? (child.getText() || '') : '';
 }
 
+/**
+ * Fetches the article at the given URL and returns the first ~1500 characters
+ * of visible text content (scripts, styles and HTML tags stripped).
+ * Returns an empty string on any error — caller falls back to title-only.
+ * @param {string} url
+ * @returns {string}
+ */
+function fetchArticleText(url) {
+  try {
+    var response = UrlFetchApp.fetch(url, {
+      muteHttpExceptions: true,
+      followRedirects:    true,
+      headers:            { 'User-Agent': 'Mozilla/5.0 (compatible; RSS-reader/1.0)' }
+    });
+    if (response.getResponseCode() !== 200) return '';
+
+    var html = response.getContentText();
+
+    // Remove script, style, nav, header, footer blocks entirely
+    html = html.replace(/<script[\s\S]*?<\/script>/gi, ' ');
+    html = html.replace(/<style[\s\S]*?<\/style>/gi,   ' ');
+    html = html.replace(/<nav[\s\S]*?<\/nav>/gi,       ' ');
+    html = html.replace(/<header[\s\S]*?<\/header>/gi, ' ');
+    html = html.replace(/<footer[\s\S]*?<\/footer>/gi, ' ');
+
+    // Strip remaining HTML tags
+    var text = html.replace(/<[^>]+>/g, ' ');
+
+    // Decode common HTML entities
+    text = text.replace(/&amp;/g, '&')
+               .replace(/&lt;/g,  '<')
+               .replace(/&gt;/g,  '>')
+               .replace(/&quot;/g, '"')
+               .replace(/&#39;/g,  "'")
+               .replace(/&nbsp;/g, ' ');
+
+    // Collapse whitespace and trim
+    text = text.replace(/\s+/g, ' ').trim();
+
+    return text.substring(0, 1500);
+  } catch (e) {
+    Logger.log('[RssFetcher] fetchArticleText failed for ' + url + ': ' + e.message);
+    return '';
+  }
+}
+
 // ============================================================
 // Gemini AI tweet generation
 // ============================================================
 
 /**
  * Calls the Groq API (llama-3.3-70b) to generate a human-sounding tweet
- * from an article title. API key stored as GEMINI_API_KEY in Script Properties.
+ * from an article title and its content excerpt.
+ * API key stored as GEMINI_API_KEY in Script Properties.
  *
- * @param {string} title  Article headline
+ * @param {string} title        Article headline
+ * @param {string} articleText  First ~1500 chars of article body (may be empty)
  * @returns {{ tweet: string } | { error: string }}
  */
-function generateTweetWithGemini(title) {
+function generateTweetWithGemini(title, articleText) {
   var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!apiKey) {
     return { error: 'GEMINI_API_KEY not set in Script Properties.' };
   }
 
+  var contextBlock = articleText && articleText.trim()
+    ? 'Article content (excerpt):\n' + articleText.trim() + '\n\n'
+    : '';
+
   var prompt =
-    'You are a senior software engineer and tech enthusiast with strong opinions about AI and technology.\n' +
-    'Write a single tweet based on this article title.\n\n' +
-    'Rules:\n' +
-    '- Write in first person, like a real person sharing a genuine thought — not a news summary\n' +
-    '- Sound opinionated, direct, and human — never robotic, corporate, or AI-generated\n' +
-    '- No URLs, no links of any kind, no hashtags\n' +
-    '- No phrases like "AI says", "according to", "I just read", "breaking:", "new article", "this article"\n' +
-    '- Do NOT mention the source, website, or publication name at all\n' +
-    '- One punchy idea only — do not try to summarise the whole article\n' +
-    '- Can be a hot take, a surprising insight, a genuine reaction, or a thought-provoking question\n' +
-    '- Maximum 260 characters — strictly enforce this\n' +
-    '- Return ONLY the tweet text — no quotes around it, no labels, no explanation\n\n' +
-    'Article title: ' + title;
+    'You are a tech industry insider — a senior engineer with 15 years of experience who has strong opinions and does not sugarcoat things.\n\n' +
+    'Your job: write one tweet based on the article. The tweet must reflect the actual content and give readers a real insight.\n\n' +
+    'Tweet writing rules:\n' +
+    '- Write in natural, flowing prose — full sentences, not compressed summaries\n' +
+    '- Confident and direct — no hype words, no corporate speak\n' +
+    '- Strong statements beat weak questions\n' +
+    '- No URLs, links, or hashtags\n' +
+    '- Do NOT start with "I just", "Just", "Breaking:", "Hot take:", "Same "\n' +
+    '- Do NOT end with "what\'s next?", "thoughts?", "the future is here"\n' +
+    '- Do NOT mention the source, publication, or website name\n' +
+    '- Between 180 and 280 characters — use the space to be specific and insightful\n\n' +
+    'Also classify the article into exactly one of these categories:\n' +
+    '"AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
+    'Respond with valid JSON only. Here are two examples of the exact format and prose style expected:\n\n' +
+    '{"tweet": "Copy-pasting from Stack Overflow was always a workaround for bad documentation. AI did not make developers lazier — it just made the workaround faster and more personal.", "category": "Tech Industry"}\n\n' +
+    '{"tweet": "An ATS that scores the same resume differently on every run is not a hiring tool — it is a random number generator with a UI. Automating bias is easy. Automating fairness is the hard part nobody is working on.", "category": "Software Engineering"}\n\n' +
+    'Now write for this article:\n' +
+    'Article title: ' + title + '\n\n' +
+    contextBlock;
 
   var url     = 'https://api.groq.com/openai/v1/chat/completions';
   var payload = {
-    model:       'llama-3.3-70b-versatile',
-    messages:    [{ role: 'user', content: prompt }],
-    max_tokens:  120,
-    temperature: 0.85
+    model:           'llama-3.3-70b-versatile',
+    messages:        [{ role: 'user', content: prompt }],
+    max_tokens:      320,
+    temperature:     0.85,
+    response_format: { type: 'json_object' }
   };
 
   try {
@@ -208,19 +271,38 @@ function generateTweetWithGemini(title) {
     }
 
     var body = JSON.parse(response.getContentText());
-    var text = body.choices &&
+    var raw  = body.choices &&
                body.choices[0] &&
                body.choices[0].message &&
                body.choices[0].message.content;
 
-    if (!text) return { error: 'Empty response from Groq' };
+    if (!raw) return { error: 'Empty response from Groq' };
 
-    // Strip surrounding quotes the model sometimes adds
-    text = text.trim().replace(/^["""''']+|["""''']+$/g, '').trim();
+    var parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      // Fallback: if JSON mode fails for some reason, use raw text as tweet
+      return { tweet: raw.trim().replace(/^["""''']+|["""''']+$/g, '').trim(), category: '' };
+    }
 
-    return { tweet: text };
+    var tweet    = String(parsed.tweet    || '').trim().replace(/^["""''']+|["""''']+$/g, '').trim();
+    var category = String(parsed.category || '').trim();
+
+    if (!tweet) return { error: 'Empty tweet in Groq JSON response' };
+
+    return { tweet: tweet, category: category };
 
   } catch (e) {
     return { error: 'Groq call failed: ' + e.message };
   }
+}
+
+/**
+ * Weekly cleanup trigger — deletes rejected rows older than 7 days.
+ * Set this up as a time-based trigger: every week (or every day if preferred).
+ * Apps Script → Triggers → Add Trigger → weeklyCleanup → Week timer
+ */
+function weeklyCleanup() {
+  cleanupOldRejectedRows(7);
 }

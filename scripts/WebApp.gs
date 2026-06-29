@@ -539,6 +539,7 @@ function handleApproveTweet(params) {
 
 /**
  * Marks a pending row as 'rejected' — no tweet is posted.
+ * Row is kept in the sheet so the RSS poller won't re-queue the same article.
  * @param {{ rowIndex: number }} params
  * @returns {{ success: boolean, message?: string, error?: string }}
  */
