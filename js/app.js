@@ -12,12 +12,14 @@ function switchTab(tab) {
   document.getElementById('tabClone').classList.toggle('hidden', tab !== 'clone');
   document.getElementById('tabNew').classList.toggle('hidden',   tab !== 'new');
   document.getElementById('tabView').classList.toggle('hidden',  tab !== 'view');
+  document.getElementById('tabAuto').classList.toggle('hidden',  tab !== 'auto');
 
-  ['tabCloneBtn', 'tabNewBtn', 'tabViewBtn'].forEach(function(id) {
+  ['tabCloneBtn', 'tabNewBtn', 'tabViewBtn', 'tabAutoBtn'].forEach(function(id) {
     var btn    = document.getElementById(id);
     var active = (id === 'tabCloneBtn' && tab === 'clone') ||
                  (id === 'tabNewBtn'   && tab === 'new')   ||
-                 (id === 'tabViewBtn'  && tab === 'view');
+                 (id === 'tabViewBtn'  && tab === 'view')  ||
+                 (id === 'tabAutoBtn'  && tab === 'auto');
     btn.classList.toggle('border-b-2',      active);
     btn.classList.toggle('border-blue-500', active);
     btn.classList.toggle('text-blue-500',   active);
@@ -996,6 +998,186 @@ function initLoginForm() {
 }
 
 // ============================================================
+// Auto Tweets tab
+// ============================================================
+
+(function initAutoTab() {
+  var refreshBtn = document.getElementById('autoRefreshBtn');
+  var loadingEl  = document.getElementById('autoLoading');
+  var feedbackEl = document.getElementById('autoFeedback');
+  var emptyEl    = document.getElementById('autoEmpty');
+  var listEl     = document.getElementById('autoList');
+
+  // ---- Load & render ----------------------------------------
+
+  function loadPending() {
+    refreshBtn.disabled = true;
+    loadingEl.classList.remove('hidden');
+    listEl.classList.add('hidden');
+    emptyEl.classList.add('hidden');
+    hideFeedback(feedbackEl);
+
+    listPending()
+      .then(function(result) {
+        if (!result.success) {
+          showFeedback(feedbackEl, result.error || 'Failed to load pending articles.', 'error');
+          return;
+        }
+        renderCards(result.items || []);
+      })
+      .catch(function(err) {
+        showFeedback(feedbackEl, 'Unexpected error: ' + err.message, 'error');
+      })
+      .finally(function() {
+        refreshBtn.disabled = false;
+        loadingEl.classList.add('hidden');
+      });
+  }
+
+  function renderCards(items) {
+    listEl.innerHTML = '';
+    if (items.length === 0) {
+      emptyEl.classList.remove('hidden');
+      return;
+    }
+    items.forEach(function(item) {
+      listEl.appendChild(createCard(item));
+    });
+    listEl.classList.remove('hidden');
+  }
+
+  function checkIfEmpty() {
+    if (listEl.children.length === 0) {
+      listEl.classList.add('hidden');
+      emptyEl.classList.remove('hidden');
+    }
+  }
+
+  // ---- Build one pending article card -----------------------
+
+  function createCard(item) {
+    var fetchedDate = item.fetchedAt ? new Date(item.fetchedAt).toLocaleString() : '';
+
+    var div = document.createElement('div');
+    div.className = 'border border-gray-200 rounded-lg p-4 space-y-3';
+
+    div.innerHTML =
+      // Article title + meta
+      '<div>' +
+        '<a class="js-article-link text-sm font-medium text-blue-600 hover:underline break-words" target="_blank" rel="noopener noreferrer"></a>' +
+        '<div class="flex flex-wrap items-center gap-2 mt-1.5">' +
+          '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 js-source-badge"></span>' +
+          (fetchedDate ? '<span class="text-xs text-gray-400">' + escapeHtml(fetchedDate) + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+
+      // Tweet draft editor
+      '<div>' +
+        '<label class="block text-xs font-medium text-gray-500 mb-1">' +
+          'Tweet draft <span class="font-normal text-gray-400">(edit before approving)</span>' +
+        '</label>' +
+        '<textarea class="js-draft w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-y focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" rows="3"></textarea>' +
+        '<p class="js-char-count text-right text-xs text-gray-400 mt-1">0 / 260</p>' +
+      '</div>' +
+
+      // Per-card feedback
+      '<div class="js-card-feedback hidden"></div>' +
+
+      // Action buttons
+      '<div class="flex gap-2">' +
+        '<button class="js-approve-btn flex-1 py-2 text-sm font-semibold text-white bg-green-500 rounded-md hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Approve &amp; Post</button>' +
+        '<button class="js-reject-btn flex-1 py-2 text-sm font-semibold text-red-500 bg-white border border-red-300 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Reject</button>' +
+      '</div>';
+
+    // Set text content safely
+    var articleLink = div.querySelector('.js-article-link');
+    articleLink.href        = item.articleUrl;
+    articleLink.textContent = item.title || item.articleUrl;
+    div.querySelector('.js-source-badge').textContent = item.source || 'Unknown';
+
+    // Pre-fill draft
+    var draftArea  = div.querySelector('.js-draft');
+    var charCount  = div.querySelector('.js-char-count');
+    draftArea.value = item.tweetDraft || '';
+    updateCharCount(draftArea, charCount, 260);
+
+    draftArea.addEventListener('input', function() {
+      updateCharCount(draftArea, charCount, 260);
+    });
+
+    // ---- Wire up buttons ----
+
+    var approveBtn   = div.querySelector('.js-approve-btn');
+    var rejectBtn    = div.querySelector('.js-reject-btn');
+    var cardFeedback = div.querySelector('.js-card-feedback');
+
+    approveBtn.addEventListener('click', function() {
+      var draft = draftArea.value.trim();
+      if (!draft) {
+        showFeedback(cardFeedback, 'Tweet text is required.', 'error');
+        return;
+      }
+      if (draft.length > 280) {
+        showFeedback(cardFeedback, 'Tweet exceeds 280 characters.', 'error');
+        return;
+      }
+
+      approveBtn.disabled = true;
+      rejectBtn.disabled  = true;
+      hideFeedback(cardFeedback);
+
+      approveTweet(item.rowIndex, draft)
+        .then(function(result) {
+          if (result.success) {
+            div.remove();
+            checkIfEmpty();
+            showFeedback(feedbackEl, 'Tweet posted: "' + draft.substring(0, 60) + (draft.length > 60 ? '…' : '') + '"', 'success');
+          } else {
+            showFeedback(cardFeedback, result.error || 'Failed to post.', 'error');
+            approveBtn.disabled = false;
+            rejectBtn.disabled  = false;
+          }
+        })
+        .catch(function(err) {
+          showFeedback(cardFeedback, 'Unexpected error: ' + err.message, 'error');
+          approveBtn.disabled = false;
+          rejectBtn.disabled  = false;
+        });
+    });
+
+    rejectBtn.addEventListener('click', function() {
+      approveBtn.disabled = true;
+      rejectBtn.disabled  = true;
+      hideFeedback(cardFeedback);
+
+      rejectTweet(item.rowIndex)
+        .then(function(result) {
+          if (result.success) {
+            div.remove();
+            checkIfEmpty();
+          } else {
+            showFeedback(cardFeedback, result.error || 'Failed to reject.', 'error');
+            approveBtn.disabled = false;
+            rejectBtn.disabled  = false;
+          }
+        })
+        .catch(function(err) {
+          showFeedback(cardFeedback, 'Unexpected error: ' + err.message, 'error');
+          approveBtn.disabled = false;
+          rejectBtn.disabled  = false;
+        });
+    });
+
+    return div;
+  }
+
+  refreshBtn.addEventListener('click', loadPending);
+
+  // Expose loader for bootstrap lazy-load on first tab activation
+  window._loadAutoPending = loadPending;
+}());
+
+// ============================================================
 // Bootstrap
 // ============================================================
 
@@ -1005,15 +1187,22 @@ document.addEventListener('DOMContentLoaded', function() {
   initCronBuilder('new');
 
   var viewTabLoaded = false;
+  var autoTabLoaded = false;
 
   document.getElementById('tabCloneBtn').addEventListener('click', function() { switchTab('clone'); });
   document.getElementById('tabNewBtn').addEventListener('click',   function() { switchTab('new'); });
   document.getElementById('tabViewBtn').addEventListener('click',  function() {
     switchTab('view');
-    // Load tweets on first activation only; Refresh button handles subsequent reloads
     if (!viewTabLoaded) {
       viewTabLoaded = true;
       window._loadViewTweets();
+    }
+  });
+  document.getElementById('tabAutoBtn').addEventListener('click',  function() {
+    switchTab('auto');
+    if (!autoTabLoaded) {
+      autoTabLoaded = true;
+      window._loadAutoPending();
     }
   });
 
