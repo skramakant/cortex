@@ -1087,6 +1087,7 @@ function initLoginForm() {
       // Action buttons
       '<div class="flex gap-2">' +
         '<button class="js-approve-btn flex-1 py-2 text-sm font-semibold text-white bg-green-500 rounded-md hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Approve &amp; Post</button>' +
+        '<button class="js-copy-btn flex-1 py-2 text-sm font-semibold text-blue-500 bg-white border border-blue-300 rounded-md hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Copy &amp; Approve</button>' +
         '<button class="js-reject-btn flex-1 py-2 text-sm font-semibold text-red-500 bg-white border border-red-300 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Reject</button>' +
       '</div>';
 
@@ -1116,6 +1117,7 @@ function initLoginForm() {
     // ---- Wire up buttons ----
 
     var approveBtn   = div.querySelector('.js-approve-btn');
+    var copyBtn      = div.querySelector('.js-copy-btn');
     var rejectBtn    = div.querySelector('.js-reject-btn');
     var cardFeedback = div.querySelector('.js-card-feedback');
 
@@ -1153,8 +1155,50 @@ function initLoginForm() {
         });
     });
 
-    rejectBtn.addEventListener('click', function() {
+    // Copy & Approve — copies draft to clipboard, marks approved, removes card
+    copyBtn.addEventListener('click', function() {
+      var draft = draftArea.value.trim();
+      if (!draft) {
+        showFeedback(cardFeedback, 'Tweet text is empty.', 'error');
+        return;
+      }
+
+      copyBtn.disabled    = true;
       approveBtn.disabled = true;
+      rejectBtn.disabled  = true;
+
+      // Copy to clipboard, fall back to textarea select if API unavailable
+      var copyPromise = navigator.clipboard
+        ? navigator.clipboard.writeText(draft)
+        : Promise.reject(new Error('Clipboard API unavailable'));
+
+      copyPromise.catch(function() {
+        // Fallback: select the textarea so the user can Ctrl+C manually
+        draftArea.select();
+      });
+
+      markApproved(item.rowIndex)
+        .then(function(result) {
+          if (result.success) {
+            div.remove();
+            checkIfEmpty();
+            showFeedback(feedbackEl, 'Copied to clipboard — paste it in the X app.', 'success');
+          } else {
+            showFeedback(cardFeedback, result.error || 'Failed to mark approved.', 'error');
+            copyBtn.disabled    = false;
+            approveBtn.disabled = false;
+            rejectBtn.disabled  = false;
+          }
+        })
+        .catch(function(err) {
+          showFeedback(cardFeedback, 'Unexpected error: ' + err.message, 'error');
+          copyBtn.disabled    = false;
+          approveBtn.disabled = false;
+          rejectBtn.disabled  = false;
+        });
+    });
+
+    rejectBtn.addEventListener('click', function() {      approveBtn.disabled = true;
       rejectBtn.disabled  = true;
       hideFeedback(cardFeedback);
 
