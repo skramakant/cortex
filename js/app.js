@@ -1067,6 +1067,7 @@ function initLoginForm() {
         '<a class="js-article-link text-sm font-medium text-blue-600 hover:underline break-words" target="_blank" rel="noopener noreferrer"></a>' +
         '<div class="flex flex-wrap items-center gap-2 mt-1.5">' +
           '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 js-source-badge"></span>' +
+          '<span class="js-category-badge hidden inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600"></span>' +
           (fetchedDate ? '<span class="text-xs text-gray-400">' + escapeHtml(fetchedDate) + '</span>' : '') +
         '</div>' +
       '</div>' +
@@ -1077,7 +1078,7 @@ function initLoginForm() {
           'Tweet draft <span class="font-normal text-gray-400">(edit before approving)</span>' +
         '</label>' +
         '<textarea class="js-draft w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-y focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" rows="3"></textarea>' +
-        '<p class="js-char-count text-right text-xs text-gray-400 mt-1">0 / 260</p>' +
+        '<p class="js-char-count text-right text-xs text-gray-400 mt-1">0 / 280</p>' +
       '</div>' +
 
       // Per-card feedback
@@ -1094,6 +1095,13 @@ function initLoginForm() {
     articleLink.href        = item.articleUrl;
     articleLink.textContent = item.title || item.articleUrl;
     div.querySelector('.js-source-badge').textContent = item.source || 'Unknown';
+
+    // Show category badge if present
+    if (item.category) {
+      var catBadge = div.querySelector('.js-category-badge');
+      catBadge.textContent = item.category;
+      catBadge.classList.remove('hidden');
+    }
 
     // Pre-fill draft
     var draftArea  = div.querySelector('.js-draft');
