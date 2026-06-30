@@ -12,18 +12,33 @@
 
 /** RSS sources to poll. Add more entries to expand coverage. */
 var RSS_SOURCES = [
-  { name: 'Hacker News', url: 'https://hnrss.org/best' }
+  // Industry news & drama
+  { name: 'Hacker News',            url: 'https://hnrss.org/best' },
+  { name: 'The Verge',              url: 'https://www.theverge.com/rss/index.xml' },
+  { name: 'TechCrunch',             url: 'https://feeds.feedburner.com/TechCrunch' },
+  { name: 'VentureBeat',            url: 'https://venturebeat.com/feed/' },
+  // Deep technical content
+  { name: 'Pragmatic Engineer',     url: 'https://newsletter.pragmaticengineer.com/feed' },
+  { name: 'Martin Fowler',          url: 'https://martinfowler.com/feed.atom' },
+  { name: 'All Things Distributed', url: 'https://www.allthingsdistributed.com/atom.xml' },
+  { name: 'Marc Brooker',           url: 'https://brooker.co.za/blog/rss.xml' },
+  // Database & backend engineering
+  { name: 'PostgreSQL News',        url: 'https://www.postgresql.org/news.rss' },
+  { name: 'PlanetScale Blog',       url: 'https://planetscale.com/blog/rss.xml' },
+  { name: 'Timescale Blog',         url: 'https://blog.timescale.com/blog/rss/' },
+  { name: 'Percona Blog',           url: 'https://www.percona.com/blog/feed/' },
+  { name: 'High Scalability',       url: 'https://highscalability.com/rss/' },
+  { name: 'Redis Blog',             url: 'https://redis.io/blog/feed/' },
 ];
 
 /** Max new articles to queue per source per run (keeps Gemini usage low). */
-var MAX_NEW_PER_SOURCE = 5;
+var MAX_NEW_PER_SOURCE = 1;
 
 /**
- * Minimum delay between Gemini API calls in milliseconds.
- * Gemini 2.0 Flash free tier allows 15 requests/min = 4 sec minimum.
- * Using 5 sec to stay comfortably under the limit.
+ * Minimum delay between Groq API calls in milliseconds.
+ * Groq free tier allows 30 RPM for llama-3.3-70b — 2 seconds keeps us safely under.
  */
-var GEMINI_CALL_DELAY_MS = 5000;
+var GEMINI_CALL_DELAY_MS = 2000;
 
 // ============================================================
 // Main entry points
@@ -31,18 +46,82 @@ var GEMINI_CALL_DELAY_MS = 5000;
 
 /**
  * Main trigger function — polls all RSS sources and queues new articles.
- * Wire this up as a time-based trigger (every 1–2 hours).
+ *
+ * Execution strategy (to stay within GAS 6-minute limit):
+ *   1. Fetch all RSS feeds in ONE parallel batch
+ *   2. Parse feeds, collect new articles across all sources
+ *   3. Fetch all article texts in ONE parallel batch (not per-source)
+ *   4. Call Groq sequentially with delay for each article
+ *
+ * Wire this up as a time-based trigger (every 2 hours).
  */
 function pollRssFeeds() {
   var sheet = getOrCreateAutoTweetSheet();
 
-  RSS_SOURCES.forEach(function(source) {
-    try {
-      fetchAndQueueFromFeed(sheet, source.name, source.url);
-    } catch (e) {
-      Logger.log('[RssFetcher] Error processing ' + source.name + ': ' + e.message);
+  // ── Step 1: fetch all RSS feeds in parallel ──────────────────────────────
+  var feedRequests = RSS_SOURCES.map(function(source) {
+    return { url: source.url, muteHttpExceptions: true };
+  });
+
+  var feedResponses;
+  try {
+    feedResponses = UrlFetchApp.fetchAll(feedRequests);
+  } catch (e) {
+    Logger.log('[RssFetcher] Failed to fetch RSS feeds: ' + e.message);
+    return;
+  }
+
+  // ── Step 2: parse each feed, collect new unseen articles ─────────────────
+  var allNewItems = []; // { sourceName, title, link }
+
+  RSS_SOURCES.forEach(function(source, i) {
+    var resp = feedResponses[i];
+    if (!resp || resp.getResponseCode() !== 200) {
+      Logger.log('[RssFetcher] HTTP ' + (resp ? resp.getResponseCode() : 'null') + ' for ' + source.name);
+      return;
+    }
+
+    var items = _parseRssItems(resp.getContentText());
+    Logger.log('[RssFetcher] ' + source.name + ': ' + items.length + ' items in feed');
+
+    var count = 0;
+    for (var j = 0; j < items.length && count < MAX_NEW_PER_SOURCE; j++) {
+      if (!items[j].title || !items[j].link) continue;
+      if (isArticleAlreadySeen(sheet, items[j].link)) {
+        Logger.log('[RssFetcher] Already seen: ' + items[j].title);
+        continue;
+      }
+      allNewItems.push({ sourceName: source.name, title: items[j].title, link: items[j].link });
+      count++;
     }
   });
+
+  if (allNewItems.length === 0) {
+    Logger.log('[RssFetcher] No new articles across all sources.');
+    return;
+  }
+
+  Logger.log('[RssFetcher] ' + allNewItems.length + ' new article(s) to process across all sources.');
+
+  // ── Step 3: generate tweet drafts sequentially ────────────────────────────
+  // Description comes from the RSS/Atom feed itself — no article URL fetching needed.
+  var queued = 0;
+  for (var k = 0; k < allNewItems.length; k++) {
+    var item = allNewItems[k];
+
+    var gen = generateTweetWithGemini(item.title, item.description || '');
+    if (gen.error) {
+      Logger.log('[RssFetcher] Groq error for "' + item.title + '": ' + gen.error + ' — skipping.');
+    } else {
+      addPendingArticle(sheet, item.link, item.sourceName, item.title, gen.tweet, gen.category || '');
+      Logger.log('[RssFetcher] Queued [' + item.sourceName + ']: ' + item.title);
+      queued++;
+    }
+
+    if (k < allNewItems.length - 1) Utilities.sleep(GEMINI_CALL_DELAY_MS);
+  }
+
+  Logger.log('[RssFetcher] Done. Queued ' + queued + ' new article(s) total.');
 }
 
 /**
@@ -60,84 +139,59 @@ function testPollRssFeeds() {
 // ============================================================
 
 /**
- * Fetches one RSS feed, filters new articles, generates tweet drafts,
- * and appends pending rows to the sheet.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
- * @param {string} sourceName
- * @param {string} feedUrl
- */
-function fetchAndQueueFromFeed(sheet, sourceName, feedUrl) {
-  var response = UrlFetchApp.fetch(feedUrl, { muteHttpExceptions: true });
-  if (response.getResponseCode() !== 200) {
-    Logger.log('[RssFetcher] HTTP ' + response.getResponseCode() + ' fetching ' + feedUrl);
-    return;
-  }
-
-  var items = _parseRssItems(response.getContentText());
-  Logger.log('[RssFetcher] ' + sourceName + ': ' + items.length + ' items in feed');
-
-  var queued = 0;
-  for (var i = 0; i < items.length && queued < MAX_NEW_PER_SOURCE; i++) {
-    var item  = items[i];
-    var title = item.title;
-    var link  = item.link;
-
-    if (!title || !link) continue;
-    if (isArticleAlreadySeen(sheet, link)) {
-      Logger.log('[RssFetcher] Already seen: ' + title);
-      continue;
-    }
-
-    // Fetch article content for richer context — fall back to title-only if it fails
-    var articleText = fetchArticleText(link);
-    Logger.log('[RssFetcher] Article text length: ' + articleText.length + ' chars for: ' + title);
-
-    // Generate tweet draft via Groq
-    var gen = generateTweetWithGemini(title, articleText);
-    if (gen.error) {
-      Logger.log('[RssFetcher] Gemini error for "' + title + '": ' + gen.error + ' — skipping, will retry next run.');
-      // Don't queue articles with no draft — they'll be picked up on the next run
-      // once the rate limit window resets.
-      if (queued < MAX_NEW_PER_SOURCE - 1) {
-        Utilities.sleep(GEMINI_CALL_DELAY_MS);
-      }
-      continue;
-    }
-
-    addPendingArticle(sheet, link, sourceName, title, gen.tweet, gen.category || '');
-    Logger.log('[RssFetcher] Queued: ' + title);
-    queued++;
-
-    // Delay between Gemini calls to stay under the 15 RPM free-tier limit
-    if (queued < MAX_NEW_PER_SOURCE && i < items.length - 1) {
-      Utilities.sleep(GEMINI_CALL_DELAY_MS);
-    }
-  }
-
-  Logger.log('[RssFetcher] Queued ' + queued + ' new article(s) from ' + sourceName);
-}
-
-/**
- * Parses RSS 2.0 XML and returns an array of { title, link } objects.
+ * Parses an RSS 2.0 or Atom 1.0 feed and returns an array of
+ * { title, link, description } objects.
+ *
+ * RSS 2.0: <channel><item> with <title>, <link>, <description>
+ * Atom 1.0: <feed><entry> with <title>, <link href="">, <summary> or <content>
+ *
  * @param {string} xmlText
- * @returns {Array<{title: string, link: string}>}
+ * @returns {Array<{title: string, link: string, description: string}>}
  */
 function _parseRssItems(xmlText) {
   var items = [];
   try {
-    var doc     = XmlService.parse(xmlText);
-    var root    = doc.getRootElement();
-    var channel = root.getChild('channel');
-    if (!channel) return items;
+    var doc  = XmlService.parse(xmlText);
+    var root = doc.getRootElement();
 
-    var rawItems = channel.getChildren('item');
-    rawItems.forEach(function(item) {
-      var title = _childText(item, 'title');
-      var link  = _childText(item, 'link');
+    // ── RSS 2.0 ──────────────────────────────────────────────────────────────
+    var channel = root.getChild('channel');
+    if (channel) {
+      channel.getChildren('item').forEach(function(item) {
+        var title       = _childText(item, 'title');
+        var link        = _childText(item, 'link');
+        var description = _stripHtml(_childText(item, 'description')).substring(0, 800);
+        if (title && link) {
+          items.push({ title: title.trim(), link: link.trim(), description: description });
+        }
+      });
+      return items;
+    }
+
+    // ── Atom 1.0 ─────────────────────────────────────────────────────────────
+    var atomNs  = XmlService.getNamespace('http://www.w3.org/2005/Atom');
+    var entries = root.getChildren('entry', atomNs);
+    if (entries.length === 0) entries = root.getChildren('entry'); // fallback (no ns)
+
+    entries.forEach(function(entry) {
+      var title   = _childTextNs(entry, 'title',   atomNs);
+      var summary = _childTextNs(entry, 'summary', atomNs) ||
+                    _childTextNs(entry, 'content', atomNs);
+      var description = _stripHtml(summary).substring(0, 800);
+
+      // Atom <link> is a self-closing element with href attribute
+      var linkEl  = entry.getChild('link', atomNs) || entry.getChild('link');
+      var link    = '';
+      if (linkEl) {
+        var hrefAttr = linkEl.getAttribute('href');
+        link = hrefAttr ? hrefAttr.getValue() : linkEl.getText();
+      }
+
       if (title && link) {
-        items.push({ title: title.trim(), link: link.trim() });
+        items.push({ title: title.trim(), link: link.trim(), description: description });
       }
     });
+
   } catch (e) {
     Logger.log('[RssFetcher] XML parse error: ' + e.message);
   }
@@ -145,7 +199,38 @@ function _parseRssItems(xmlText) {
 }
 
 /**
- * Safely reads the text of a named child element.
+ * Safely reads the text of a named child element, with optional namespace.
+ * @param {GoogleAppsScript.XML.Element} parent
+ * @param {string} name
+ * @param {GoogleAppsScript.XML.Namespace} [ns]
+ * @returns {string}
+ */
+function _childTextNs(parent, name, ns) {
+  var child = ns ? parent.getChild(name, ns) : parent.getChild(name);
+  return child ? (child.getText() || '') : '';
+}
+
+/**
+ * Strips HTML tags and decodes common entities from a string.
+ * @param {string} html
+ * @returns {string}
+ */
+function _stripHtml(html) {
+  if (!html) return '';
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g,  '&')
+    .replace(/&lt;/g,   '<')
+    .replace(/&gt;/g,   '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g,  "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g,    ' ')
+    .trim();
+}
+
+/**
+ * Safely reads the text of a named child element (no namespace).
  * @param {GoogleAppsScript.XML.Element} parent
  * @param {string} name
  * @returns {string}
@@ -153,52 +238,6 @@ function _parseRssItems(xmlText) {
 function _childText(parent, name) {
   var child = parent.getChild(name);
   return child ? (child.getText() || '') : '';
-}
-
-/**
- * Fetches the article at the given URL and returns the first ~1500 characters
- * of visible text content (scripts, styles and HTML tags stripped).
- * Returns an empty string on any error — caller falls back to title-only.
- * @param {string} url
- * @returns {string}
- */
-function fetchArticleText(url) {
-  try {
-    var response = UrlFetchApp.fetch(url, {
-      muteHttpExceptions: true,
-      followRedirects:    true,
-      headers:            { 'User-Agent': 'Mozilla/5.0 (compatible; RSS-reader/1.0)' }
-    });
-    if (response.getResponseCode() !== 200) return '';
-
-    var html = response.getContentText();
-
-    // Remove script, style, nav, header, footer blocks entirely
-    html = html.replace(/<script[\s\S]*?<\/script>/gi, ' ');
-    html = html.replace(/<style[\s\S]*?<\/style>/gi,   ' ');
-    html = html.replace(/<nav[\s\S]*?<\/nav>/gi,       ' ');
-    html = html.replace(/<header[\s\S]*?<\/header>/gi, ' ');
-    html = html.replace(/<footer[\s\S]*?<\/footer>/gi, ' ');
-
-    // Strip remaining HTML tags
-    var text = html.replace(/<[^>]+>/g, ' ');
-
-    // Decode common HTML entities
-    text = text.replace(/&amp;/g, '&')
-               .replace(/&lt;/g,  '<')
-               .replace(/&gt;/g,  '>')
-               .replace(/&quot;/g, '"')
-               .replace(/&#39;/g,  "'")
-               .replace(/&nbsp;/g, ' ');
-
-    // Collapse whitespace and trim
-    text = text.replace(/\s+/g, ' ').trim();
-
-    return text.substring(0, 1500);
-  } catch (e) {
-    Logger.log('[RssFetcher] fetchArticleText failed for ' + url + ': ' + e.message);
-    return '';
-  }
 }
 
 // ============================================================
@@ -226,21 +265,22 @@ function generateTweetWithGemini(title, articleText) {
 
   var prompt =
     'You are a tech industry insider — a senior engineer with 15 years of experience who has strong opinions and does not sugarcoat things.\n\n' +
-    'Your job: write one tweet based on the article. The tweet must reflect the actual content and give readers a real insight.\n\n' +
-    'Tweet writing rules:\n' +
-    '- Write in natural, flowing prose — full sentences, not compressed summaries\n' +
-    '- Confident and direct — no hype words, no corporate speak\n' +
-    '- Strong statements beat weak questions\n' +
+    'Your job: write one tweet based on the article. Use this exact 3-line structure:\n\n' +
+    'Line 1: A provocative statement or surprising fact from the article — the hook. Make someone stop scrolling. (1 sentence)\n' +
+    'Line 2: The context or why it matters — add the detail that makes line 1 credible. (1–2 sentences)\n' +
+    'Line 3: The implication or your take — what this means for developers, companies, or the industry. (1 sentence)\n\n' +
+    'Separate each line with a newline character. Total length between 200 and 300 characters.\n\n' +
+    'Voice: confident, plain, no hype words, no corporate speak.\n\n' +
+    'Hard rules:\n' +
     '- No URLs, links, or hashtags\n' +
-    '- Do NOT start with "I just", "Just", "Breaking:", "Hot take:", "Same "\n' +
+    '- Do NOT start with "I just", "Just", "Breaking:", "Hot take:"\n' +
     '- Do NOT end with "what\'s next?", "thoughts?", "the future is here"\n' +
-    '- Do NOT mention the source, publication, or website name\n' +
-    '- Between 180 and 280 characters — use the space to be specific and insightful\n\n' +
+    '- Do NOT mention the source or publication name\n' +
+    '- Return the tweet text ONLY — no labels, no quotes, nothing else\n\n' +
     'Also classify the article into exactly one of these categories:\n' +
     '"AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
-    'Respond with valid JSON only. Here are two examples of the exact format and prose style expected:\n\n' +
-    '{"tweet": "Copy-pasting from Stack Overflow was always a workaround for bad documentation. AI did not make developers lazier — it just made the workaround faster and more personal.", "category": "Tech Industry"}\n\n' +
-    '{"tweet": "An ATS that scores the same resume differently on every run is not a hiring tool — it is a random number generator with a UI. Automating bias is easy. Automating fairness is the hard part nobody is working on.", "category": "Software Engineering"}\n\n' +
+    'Example JSON output:\n\n' +
+    '{"tweet": "Google laid off 12,000 engineers and then hired 12,000 more for AI.\n\nThe jobs did not disappear — they were reclassified. If you are not learning AI tooling right now, you are being quietly replaced.\n\nThe transition is already happening. Most people just have not noticed.", "category": "Tech Industry"}\n\n' +
     'Now write for this article:\n' +
     'Article title: ' + title + '\n\n' +
     contextBlock;
