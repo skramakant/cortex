@@ -13,7 +13,7 @@
 /** RSS sources to poll. Add more entries to expand coverage. */
 var RSS_SOURCES = [
   // Industry news & drama
-  { name: 'Hacker News',            url: 'https://hnrss.org/best' },
+  { name: 'Hacker News',            url: 'https://hnrss.org/best',                          skipDescription: true },
   { name: 'The Verge',              url: 'https://www.theverge.com/rss/index.xml' },
   { name: 'TechCrunch',             url: 'https://feeds.feedburner.com/TechCrunch' },
   { name: 'VentureBeat',            url: 'https://venturebeat.com/feed/' },
@@ -91,7 +91,12 @@ function pollRssFeeds() {
         Logger.log('[RssFetcher] Already seen: ' + items[j].title);
         continue;
       }
-      allNewItems.push({ sourceName: source.name, title: items[j].title, link: items[j].link });
+      allNewItems.push({
+        sourceName:  source.name,
+        title:       items[j].title,
+        link:        items[j].link,
+        description: source.skipDescription ? '' : (items[j].description || '')
+      });
       count++;
     }
   });
@@ -114,7 +119,7 @@ function pollRssFeeds() {
       Logger.log('[RssFetcher] Groq error for "' + item.title + '": ' + gen.error + ' — skipping.');
     } else {
       addPendingArticle(sheet, item.link, item.sourceName, item.title, gen.tweet, gen.category || '');
-      Logger.log('[RssFetcher] Queued [' + item.sourceName + ']: ' + item.title);
+      Logger.log('[RssFetcher] Queued [' + item.sourceName + '] desc:' + (item.description || '').length + 'ch: ' + item.title);
       queued++;
     }
 
@@ -157,10 +162,18 @@ function _parseRssItems(xmlText) {
     // ── RSS 2.0 ──────────────────────────────────────────────────────────────
     var channel = root.getChild('channel');
     if (channel) {
+      // content:encoded namespace (used by WordPress and many RSS feeds)
+      var contentNs = XmlService.getNamespace('http://purl.org/rss/1.0/modules/content/');
+
       channel.getChildren('item').forEach(function(item) {
-        var title       = _childText(item, 'title');
-        var link        = _childText(item, 'link');
-        var description = _stripHtml(_childText(item, 'description')).substring(0, 800);
+        var title = _childText(item, 'title');
+        var link  = _childText(item, 'link');
+
+        // Prefer content:encoded (full article) over description (usually a short excerpt)
+        var encoded     = _childTextNs(item, 'encoded', contentNs);
+        var raw         = encoded || _childText(item, 'description');
+        var description = _stripHtml(raw).substring(0, 1200);
+
         if (title && link) {
           items.push({ title: title.trim(), link: link.trim(), description: description });
         }
@@ -174,10 +187,11 @@ function _parseRssItems(xmlText) {
     if (entries.length === 0) entries = root.getChildren('entry'); // fallback (no ns)
 
     entries.forEach(function(entry) {
-      var title   = _childTextNs(entry, 'title',   atomNs);
-      var summary = _childTextNs(entry, 'summary', atomNs) ||
-                    _childTextNs(entry, 'content', atomNs);
-      var description = _stripHtml(summary).substring(0, 800);
+      // Try with namespace first, then without — feeds vary
+      var title   = _childTextNs(entry, 'title',   atomNs) || _childText(entry, 'title');
+      var summary = _childTextNs(entry, 'summary', atomNs) || _childText(entry, 'summary') ||
+                    _childTextNs(entry, 'content', atomNs) || _childText(entry, 'content');
+      var description = _stripHtml(summary).substring(0, 1200);
 
       // Atom <link> is a self-closing element with href attribute
       var linkEl  = entry.getChild('link', atomNs) || entry.getChild('link');
