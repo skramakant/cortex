@@ -65,6 +65,16 @@ function doPost(e) {
       result = handleRejectTweet(params);
     } else if (action === 'markApproved') {
       result = handleMarkApproved(params);
+    } else if (action === 'listFeeds') {
+      result = handleListFeeds();
+    } else if (action === 'toggleFeed') {
+      result = handleToggleFeed(params);
+    } else if (action === 'addFeed') {
+      result = handleAddFeed(params);
+    } else if (action === 'deleteFeed') {
+      result = handleDeleteFeed(params);
+    } else if (action === 'analyzeEngagement') {
+      result = handleAnalyzeEngagement();
     } else {
       result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -491,13 +501,18 @@ function handleVerifyPassword(params) {
 // ============================================================
 
 /**
- * Returns all rows with status 'pending' from the auto_tweets sheet.
+ * Returns all rows with status 'pending' from the auto_tweets sheet,
+ * sorted by fetchedAt descending (newest first).
  * @returns {{ success: boolean, items?: Array<Object>, error?: string }}
  */
 function handleListPending() {
   try {
     var sheet   = getOrCreateAutoTweetSheet();
     var pending = getPendingRows(sheet);
+    // Newest article on top
+    pending.sort(function(a, b) {
+      return new Date(b.fetchedAt) - new Date(a.fetchedAt);
+    });
     return { success: true, items: pending };
   } catch (err) {
     return { success: false, error: 'Failed to list pending: ' + err.message };
@@ -578,5 +593,202 @@ function handleMarkApproved(params) {
     return { success: true, message: 'Marked as approved.' };
   } catch (err) {
     return { success: false, error: 'Unexpected error: ' + err.message };
+  }
+}
+
+// ============================================================
+// Feed management handlers
+// ============================================================
+
+/**
+ * Returns all feeds from the rss_feeds sheet.
+ * @returns {{ success: boolean, feeds?: Array<Object>, error?: string }}
+ */
+function handleListFeeds() {
+  try {
+    var sheet = getOrCreateFeedSheet();
+    var feeds = getAllFeeds(sheet);
+    return { success: true, feeds: feeds };
+  } catch (err) {
+    return { success: false, error: 'Failed to list feeds: ' + err.message };
+  }
+}
+
+/**
+ * Enables or disables a feed by row index.
+ * @param {{ rowIndex: number, enabled: boolean }} params
+ * @returns {{ success: boolean, message?: string, error?: string }}
+ */
+function handleToggleFeed(params) {
+  try {
+    var rowIndex = Number(params.rowIndex);
+    if (!rowIndex || rowIndex < 2) {
+      return { success: false, error: 'Invalid row index.' };
+    }
+    var sheet   = getOrCreateFeedSheet();
+    var enabled = params.enabled === true || String(params.enabled).toLowerCase() === 'true';
+    setFeedEnabled(sheet, rowIndex, enabled);
+    return { success: true, message: (enabled ? 'Feed enabled.' : 'Feed disabled.') };
+  } catch (err) {
+    return { success: false, error: 'Failed to toggle feed: ' + err.message };
+  }
+}
+
+/**
+ * Adds a new feed row.
+ * @param {{ name: string, url: string, description: string, skipDescription: boolean }} params
+ * @returns {{ success: boolean, message?: string, error?: string }}
+ */
+function handleAddFeed(params) {
+  try {
+    var name        = String(params.name        || '').trim();
+    var url         = String(params.url         || '').trim();
+    var description = String(params.description || '').trim();
+    var skipDesc    = params.skipDescription === true ||
+                      String(params.skipDescription).toLowerCase() === 'true';
+
+    if (!name) return { success: false, error: 'Feed name is required.' };
+    if (!url)  return { success: false, error: 'Feed URL is required.'  };
+
+    var sheet = getOrCreateFeedSheet();
+    addFeedRow(sheet, name, url, description, skipDesc);
+    return { success: true, message: '"' + name + '" added successfully.' };
+  } catch (err) {
+    return { success: false, error: 'Failed to add feed: ' + err.message };
+  }
+}
+
+/**
+ * Deletes a feed row by row index.
+ * @param {{ rowIndex: number }} params
+ * @returns {{ success: boolean, message?: string, error?: string }}
+ */
+function handleDeleteFeed(params) {
+  try {
+    var rowIndex = Number(params.rowIndex);
+    if (!rowIndex || rowIndex < 2) {
+      return { success: false, error: 'Invalid row index.' };
+    }
+    var sheet = getOrCreateFeedSheet();
+    deleteFeedRow(sheet, rowIndex);
+    return { success: true, message: 'Feed deleted.' };
+  } catch (err) {
+    return { success: false, error: 'Failed to delete feed: ' + err.message };
+  }
+}
+
+// ============================================================
+// Engagement analysis handler
+// ============================================================
+
+/**
+ * Fetches the 10 newest pending tweets, sends them to Groq in one call,
+ * and returns engagement recommendations for each.
+ * @returns {{ success: boolean, results?: Array<Object>, error?: string }}
+ */
+function handleAnalyzeEngagement() {
+  try {
+    var sheet   = getOrCreateAutoTweetSheet();
+    var pending = getPendingRowsForAnalysis(sheet); // only unanalyzed rows, newest first, max 10
+
+    if (pending.length === 0) {
+      return { success: false, error: 'No unanalyzed pending tweets. All pending tweets already have a verdict.' };
+    }
+
+    var analysis = _analyzeEngagementWithGroq(pending);
+    if (analysis.error) {
+      return { success: false, error: analysis.error };
+    }
+
+    // Persist verdicts so the same tweets are not re-analyzed next time
+    saveAnalysisVerdicts(sheet, analysis.results);
+
+    return { success: true, results: analysis.results };
+  } catch (err) {
+    return { success: false, error: 'Failed to analyze: ' + err.message };
+  }
+}
+
+/**
+ * Sends up to 10 pending tweets to Groq and returns structured recommendations.
+ * Uses a single API call for all tweets to keep latency and token usage low.
+ * @param {Array<Object>} tweets
+ * @returns {{ results: Array<Object> } | { error: string }}
+ */
+function _analyzeEngagementWithGroq(tweets) {
+  var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!apiKey) return { error: 'GEMINI_API_KEY not set in Script Properties.' };
+
+  var tweetList = tweets.map(function(t, i) {
+    return (i + 1) + '. [rowIndex: ' + t.rowIndex + ']\n' +
+           'Category: ' + (t.category || 'Unknown') + '\n' +
+           'Draft: ' + t.tweetDraft;
+  }).join('\n\n');
+
+  var prompt =
+    'You are a social media expert specializing in tech Twitter/X content for an audience of software engineers.\n\n' +
+    'Analyze these ' + tweets.length + ' pending tweet drafts and recommend whether to post each one.\n\n' +
+    'APPROVE if the tweet:\n' +
+    '- Has a strong hook that makes a developer stop scrolling\n' +
+    '- Is specific — uses real names, numbers, product names, or concrete facts\n' +
+    '- Is opinionated, educational, or surprising\n' +
+    '- Avoids clichéd endings ("left behind", "change is coming", "thoughts?")\n\n' +
+    'REJECT if the tweet:\n' +
+    '- Is generic or could apply to anything\n' +
+    '- Is about politics, entertainment, or history unrelated to tech\n' +
+    '- Has multiple "will be left behind" or fear-based endings\n' +
+    '- Is about a product release note nobody outside that product cares about\n\n' +
+    'Return valid JSON only (json object format). No markdown:\n' +
+    '{"results": [{"rowIndex": <number>, "decision": "approve", "score": <1-10>, "reason": "<one sentence why>"}]}\n\n' +
+    'Tweets:\n\n' + tweetList;
+
+  var payload = {
+    model:           'llama-3.3-70b-versatile',
+    messages:        [{ role: 'user', content: prompt }],
+    max_tokens:      1000,
+    temperature:     0.2,
+    response_format: { type: 'json_object' }
+  };
+
+  try {
+    var response = UrlFetchApp.fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method:             'POST',
+      contentType:        'application/json',
+      headers:            { 'Authorization': 'Bearer ' + apiKey },
+      payload:            JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    if (response.getResponseCode() !== 200) {
+      return { error: 'Groq HTTP ' + response.getResponseCode() + ': ' +
+               response.getContentText().substring(0, 300) };
+    }
+
+    var body   = JSON.parse(response.getContentText());
+    var raw    = body.choices && body.choices[0] &&
+                 body.choices[0].message && body.choices[0].message.content;
+    if (!raw) return { error: 'Empty response from Groq.' };
+
+    var parsed  = JSON.parse(raw);
+    var results = parsed.results || parsed.tweets || (Array.isArray(parsed) ? parsed : []);
+
+    // Enrich with tweet data so the frontend has everything it needs
+    var enriched = results.map(function(r) {
+      var tweet = tweets.filter(function(t) { return t.rowIndex === Number(r.rowIndex); })[0] || {};
+      return {
+        rowIndex:   Number(r.rowIndex),
+        decision:   String(r.decision || 'reject').toLowerCase(),
+        score:      Number(r.score) || 0,
+        reason:     String(r.reason || ''),
+        title:      tweet.title      || '',
+        tweetDraft: tweet.tweetDraft || '',
+        category:   tweet.category   || '',
+        source:     tweet.source     || '',
+      };
+    });
+
+    return { results: enriched };
+  } catch (e) {
+    return { error: 'Groq call failed: ' + e.message };
   }
 }

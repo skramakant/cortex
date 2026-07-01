@@ -1,35 +1,16 @@
 /**
  * RssFetcher.gs
- * Polls RSS feeds, generates tweet drafts via Gemini, and queues them
+ * Polls RSS feeds, generates tweet drafts via Groq, and queues them
  * as pending rows in the auto_tweets sheet for manual approval in the UI.
  *
+ * Feed sources are managed in the "rss_feeds" sheet tab (FeedSheet.gs).
+ * Enable/disable individual feeds from the Feeds tab in the UI.
+ *
  * Setup:
- *   1. Set GEMINI_API_KEY in Script Properties.
- *   2. Create a time-based trigger: Triggers → Add Trigger → pollRssFeeds
- *      Run every 1 hour (or every 2 hours to stay well within free-tier limits).
- *   3. Run testPollRssFeeds() manually from the editor to verify everything works.
+ *   1. Set GEMINI_API_KEY (Groq key) in Script Properties.
+ *   2. Triggers → Add Trigger → pollRssFeeds → Time-driven → every 2 hours.
+ *   3. Run testPollRssFeeds() manually to verify the pipeline.
  */
-
-/** RSS sources to poll. Add more entries to expand coverage. */
-var RSS_SOURCES = [
-  // Industry news & drama
-  { name: 'Hacker News',            url: 'https://hnrss.org/best',                          skipDescription: true },
-  { name: 'The Verge',              url: 'https://www.theverge.com/rss/index.xml' },
-  { name: 'TechCrunch',             url: 'https://feeds.feedburner.com/TechCrunch' },
-  { name: 'VentureBeat',            url: 'https://venturebeat.com/feed/' },
-  // Deep technical content
-  { name: 'Pragmatic Engineer',     url: 'https://newsletter.pragmaticengineer.com/feed' },
-  { name: 'Martin Fowler',          url: 'https://martinfowler.com/feed.atom' },
-  { name: 'All Things Distributed', url: 'https://www.allthingsdistributed.com/atom.xml' },
-  { name: 'Marc Brooker',           url: 'https://brooker.co.za/blog/rss.xml' },
-  // Database & backend engineering
-  { name: 'PostgreSQL News',        url: 'https://www.postgresql.org/news.rss' },
-  { name: 'PlanetScale Blog',       url: 'https://planetscale.com/blog/rss.xml' },
-  { name: 'Timescale Blog',         url: 'https://blog.timescale.com/blog/rss/' },
-  { name: 'Percona Blog',           url: 'https://www.percona.com/blog/feed/' },
-  { name: 'High Scalability',       url: 'https://highscalability.com/rss/' },
-  { name: 'Redis Blog',             url: 'https://redis.io/blog/feed/' },
-];
 
 /** Max new articles to queue per source per run (keeps Gemini usage low). */
 var MAX_NEW_PER_SOURCE = 1;
@@ -56,10 +37,18 @@ var GEMINI_CALL_DELAY_MS = 2000;
  * Wire this up as a time-based trigger (every 2 hours).
  */
 function pollRssFeeds() {
-  var sheet = getOrCreateAutoTweetSheet();
+  var sheet     = getOrCreateAutoTweetSheet();
+  var feedSheet = getOrCreateFeedSheet();
+  var sources   = getEnabledFeeds(feedSheet);
+
+  if (sources.length === 0) {
+    Logger.log('[RssFetcher] No enabled feeds. Add feeds in the Feeds tab.');
+    return;
+  }
+  Logger.log('[RssFetcher] Polling ' + sources.length + ' enabled feed(s).');
 
   // ── Step 1: fetch all RSS feeds in parallel ──────────────────────────────
-  var feedRequests = RSS_SOURCES.map(function(source) {
+  var feedRequests = sources.map(function(source) {
     return { url: source.url, muteHttpExceptions: true };
   });
 
@@ -72,9 +61,9 @@ function pollRssFeeds() {
   }
 
   // ── Step 2: parse each feed, collect new unseen articles ─────────────────
-  var allNewItems = []; // { sourceName, title, link }
+  var allNewItems = []; // { sourceName, title, link, description }
 
-  RSS_SOURCES.forEach(function(source, i) {
+  sources.forEach(function(source, i) {
     var resp = feedResponses[i];
     if (!resp || resp.getResponseCode() !== 200) {
       Logger.log('[RssFetcher] HTTP ' + (resp ? resp.getResponseCode() : 'null') + ' for ' + source.name);

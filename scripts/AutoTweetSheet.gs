@@ -20,6 +20,7 @@ var AT_COL_STATUS       = 5;
 var AT_COL_FETCHED_AT   = 6;
 var AT_COL_ACTIONED_AT  = 7;
 var AT_COL_CATEGORY     = 8;
+var AT_COL_AI_VERDICT   = 9;
 
 /**
  * Returns the auto_tweets sheet, creating it with headers if it doesn't exist.
@@ -30,7 +31,7 @@ function getOrCreateAutoTweetSheet() {
   var sheet = ss.getSheetByName('auto_tweets');
   if (!sheet) {
     sheet = ss.insertSheet('auto_tweets');
-    sheet.getRange(1, 1, 1, 8).setValues([[
+    sheet.getRange(1, 1, 1, 9).setValues([[
       'article url',
       'source',
       'article title',
@@ -38,13 +39,21 @@ function getOrCreateAutoTweetSheet() {
       'status',
       'fetched at',
       'actioned at',
-      'category'
+      'category',
+      'ai verdict'
     ]]);
     sheet.setFrozenRows(1);
     sheet.setColumnWidth(AT_COL_ARTICLE_URL,  300);
     sheet.setColumnWidth(AT_COL_TITLE,        300);
     sheet.setColumnWidth(AT_COL_TWEET_DRAFT,  350);
     sheet.setColumnWidth(AT_COL_CATEGORY,     140);
+    sheet.setColumnWidth(AT_COL_AI_VERDICT,   260);
+  } else {
+    // Ensure ai_verdict header exists on older sheets created before this column was added
+    if (sheet.getLastColumn() < AT_COL_AI_VERDICT) {
+      sheet.getRange(1, AT_COL_AI_VERDICT).setValue('ai verdict');
+      sheet.setColumnWidth(AT_COL_AI_VERDICT, 260);
+    }
   }
   return sheet;
 }
@@ -78,7 +87,7 @@ function isArticleAlreadySeen(sheet, articleUrl) {
 function addPendingArticle(sheet, articleUrl, source, title, tweetDraft, category) {
   var rowIndex = sheet.getLastRow() + 1;
   var now      = new Date().toISOString();
-  sheet.getRange(rowIndex, 1, 1, 8).setValues([[
+  sheet.getRange(rowIndex, 1, 1, 9).setValues([[
     articleUrl,
     source,
     title,
@@ -86,7 +95,8 @@ function addPendingArticle(sheet, articleUrl, source, title, tweetDraft, categor
     'pending',
     now,
     '',
-    category || ''
+    category || '',
+    ''         // ai_verdict — empty until analyzed
   ]]);
   return rowIndex;
 }
@@ -100,7 +110,7 @@ function getPendingRows(sheet) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
 
-  var rows    = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
+  var rows    = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
   var pending = [];
 
   rows.forEach(function(row, i) {
@@ -114,6 +124,7 @@ function getPendingRows(sheet) {
         status:     'pending',
         fetchedAt:  String(row[AT_COL_FETCHED_AT  - 1] || ''),
         category:   String(row[AT_COL_CATEGORY    - 1] || ''),
+        aiVerdict:  String(row[AT_COL_AI_VERDICT  - 1] || ''),
       });
     }
   });
@@ -168,4 +179,35 @@ function cleanupOldRejectedRows(daysOld) {
   }
 
   Logger.log('[Cleanup] Deleted ' + deleted + ' rejected row(s) older than ' + daysOld + ' days.');
+}
+
+/**
+ * Returns pending rows that have NOT yet been analyzed (ai_verdict is empty).
+ * Sorted newest first, capped at 10 — used by handleAnalyzeEngagement().
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @returns {Array<Object>}
+ */
+function getPendingRowsForAnalysis(sheet) {
+  var all = getPendingRows(sheet).filter(function(row) {
+    return !row.aiVerdict || row.aiVerdict.trim() === '';
+  });
+  all.sort(function(a, b) {
+    return new Date(b.fetchedAt) - new Date(a.fetchedAt);
+  });
+  return all.slice(0, 10);
+}
+
+/**
+ * Writes the AI verdict string to column I for each analyzed row.
+ * Verdict format: "approve (8/10): reason text"
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {Array<{rowIndex: number, decision: string, score: number, reason: string}>} results
+ */
+function saveAnalysisVerdicts(sheet, results) {
+  results.forEach(function(r) {
+    if (!r.rowIndex || r.rowIndex < 2) return;
+    var verdict = r.decision + ' (' + r.score + '/10): ' + (r.reason || '');
+    sheet.getRange(r.rowIndex, AT_COL_AI_VERDICT).setValue(verdict);
+  });
 }

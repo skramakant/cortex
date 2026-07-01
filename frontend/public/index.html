@@ -84,6 +84,18 @@
       >
         Auto Tweets
       </button>
+      <button
+        id="tabFeedsBtn"
+        class="px-5 py-3 text-sm text-gray-500 focus:outline-none"
+      >
+        Feeds
+      </button>
+      <button
+        id="tabEngageBtn"
+        class="px-5 py-3 text-sm text-gray-500 focus:outline-none"
+      >
+        Engagement
+      </button>
     </div>
 
     <!-- Card wrapper -->
@@ -497,6 +509,16 @@
           </button>
         </div>
 
+        <!-- Filter row — shown once items are loaded -->
+        <div id="autoFilterRow" class="hidden flex gap-3 mb-4">
+          <select id="autoSourceFilter" class="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">All sources</option>
+          </select>
+          <select id="autoCategoryFilter" class="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">All categories</option>
+          </select>
+        </div>
+
         <!-- Loading -->
         <p id="autoLoading" class="hidden text-sm text-gray-500 text-center py-8">Loading…</p>
 
@@ -511,6 +533,119 @@
 
         <!-- Pending article cards — injected by JS -->
         <div id="autoList" class="hidden space-y-4"></div>
+
+      </div>
+
+      <!-- ===== FEEDS TAB ===== -->
+      <div id="tabFeeds" class="hidden">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <p class="text-sm text-gray-500">RSS and Atom feeds polled every 2 hours</p>
+            <p class="text-xs text-gray-400 mt-0.5">Toggle to enable or disable. Add new feeds with any RSS or Atom URL.</p>
+          </div>
+          <button
+            id="feedsShowAddBtn"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600 transition-colors"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+            </svg>
+            Add Feed
+          </button>
+        </div>
+
+        <!-- Add feed form (hidden by default) -->
+        <div id="feedsAddForm" class="hidden mb-5 p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-3">
+          <p class="text-sm font-medium text-gray-700">Add new feed</p>
+          <div class="flex gap-3">
+            <div class="flex-1">
+              <label class="block text-xs font-medium text-gray-500 mb-1">Name</label>
+              <input type="text" id="feedsNewName" placeholder="e.g. Bytes Newsletter"
+                autocomplete="off"
+                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Feed URL (RSS or Atom)</label>
+            <input type="url" id="feedsNewUrl" placeholder="https://example.com/feed.xml"
+              autocomplete="off"
+              class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Description <span class="font-normal text-gray-400">(optional — what this feed covers)</span></label>
+            <input type="text" id="feedsNewDesc" placeholder="e.g. Weekly digest of JavaScript ecosystem news"
+              autocomplete="off"
+              class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+          </div>
+          <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+            <input type="checkbox" id="feedsNewSkipDesc" class="accent-blue-500">
+            Skip description field <span class="text-xs text-gray-400">(use title only — for feeds where &lt;description&gt; is metadata, not content)</span>
+          </label>
+          <div id="feedsFormFeedback" class="hidden"></div>
+          <div class="flex gap-2 pt-1">
+            <button id="feedsSaveBtn"
+              class="flex-1 py-2 text-sm font-semibold text-white bg-blue-500 rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors">
+              Add Feed
+            </button>
+            <button id="feedsCancelBtn"
+              class="flex-1 py-2 text-sm font-semibold text-blue-500 bg-white border border-blue-300 rounded-md hover:bg-blue-50 transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        <!-- Loading -->
+        <p id="feedsLoading" class="hidden text-sm text-gray-500 text-center py-8">Loading feeds…</p>
+
+        <!-- Feedback -->
+        <div id="feedsFeedback" class="hidden"></div>
+
+        <!-- Empty state -->
+        <div id="feedsEmpty" class="hidden text-center py-10">
+          <p class="text-sm text-gray-400">No feeds yet. Click "Add Feed" to get started.</p>
+        </div>
+
+        <!-- Feed list — injected by JS -->
+        <div id="feedsList" class="hidden space-y-2"></div>
+
+      </div>
+
+      <!-- ===== ENGAGEMENT TAB ===== -->
+      <div id="tabEngage" class="hidden">
+
+        <!-- Header -->
+        <div class="flex items-start justify-between mb-4">
+          <div>
+            <p class="text-sm text-gray-500">AI-powered engagement analysis</p>
+            <p class="text-xs text-gray-400 mt-0.5">Sends your latest unanalyzed pending tweets to Groq. Get approve/reject verdicts with scores and reasons. Verdicts are saved so tweets are not re-analyzed.</p>
+          </div>
+          <button
+            id="engageAnalyzeBtn"
+            class="ml-4 shrink-0 flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-blue-500 rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            Analyze
+          </button>
+        </div>
+
+        <!-- Loading -->
+        <p id="engageLoading" class="hidden text-sm text-gray-500 text-center py-8">Sending to Groq — this takes a few seconds…</p>
+
+        <!-- Feedback -->
+        <div id="engageFeedback" class="hidden"></div>
+
+        <!-- Empty state -->
+        <div id="engageEmpty" class="hidden text-center py-10">
+          <p class="text-sm text-gray-400">No unanalyzed pending tweets.</p>
+          <p class="text-xs text-gray-300 mt-1">All pending tweets already have a verdict, or there are no pending tweets yet.</p>
+        </div>
+
+        <!-- Results — injected by JS -->
+        <div id="engageList" class="hidden space-y-4"></div>
 
       </div>
 

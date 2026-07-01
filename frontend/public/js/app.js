@@ -9,17 +9,21 @@
 // ============================================================
 
 function switchTab(tab) {
-  document.getElementById('tabClone').classList.toggle('hidden', tab !== 'clone');
-  document.getElementById('tabNew').classList.toggle('hidden',   tab !== 'new');
-  document.getElementById('tabView').classList.toggle('hidden',  tab !== 'view');
-  document.getElementById('tabAuto').classList.toggle('hidden',  tab !== 'auto');
+  document.getElementById('tabClone').classList.toggle('hidden',  tab !== 'clone');
+  document.getElementById('tabNew').classList.toggle('hidden',    tab !== 'new');
+  document.getElementById('tabView').classList.toggle('hidden',   tab !== 'view');
+  document.getElementById('tabAuto').classList.toggle('hidden',   tab !== 'auto');
+  document.getElementById('tabFeeds').classList.toggle('hidden',  tab !== 'feeds');
+  document.getElementById('tabEngage').classList.toggle('hidden', tab !== 'engage');
 
-  ['tabCloneBtn', 'tabNewBtn', 'tabViewBtn', 'tabAutoBtn'].forEach(function(id) {
+  ['tabCloneBtn', 'tabNewBtn', 'tabViewBtn', 'tabAutoBtn', 'tabFeedsBtn', 'tabEngageBtn'].forEach(function(id) {
     var btn    = document.getElementById(id);
-    var active = (id === 'tabCloneBtn' && tab === 'clone') ||
-                 (id === 'tabNewBtn'   && tab === 'new')   ||
-                 (id === 'tabViewBtn'  && tab === 'view')  ||
-                 (id === 'tabAutoBtn'  && tab === 'auto');
+    var active = (id === 'tabCloneBtn'  && tab === 'clone')  ||
+                 (id === 'tabNewBtn'    && tab === 'new')     ||
+                 (id === 'tabViewBtn'   && tab === 'view')    ||
+                 (id === 'tabAutoBtn'   && tab === 'auto')    ||
+                 (id === 'tabFeedsBtn'  && tab === 'feeds')   ||
+                 (id === 'tabEngageBtn' && tab === 'engage');
     btn.classList.toggle('border-b-2',      active);
     btn.classList.toggle('border-blue-500', active);
     btn.classList.toggle('text-blue-500',   active);
@@ -915,6 +919,366 @@ function cronToHuman(cron) {
 }());
 
 // ============================================================
+// Engagement tab
+// ============================================================
+
+(function initEngagementTab() {
+  var analyzeBtn = document.getElementById('engageAnalyzeBtn');
+  var loadingEl  = document.getElementById('engageLoading');
+  var feedbackEl = document.getElementById('engageFeedback');
+  var emptyEl    = document.getElementById('engageEmpty');
+  var listEl     = document.getElementById('engageList');
+
+  analyzeBtn.addEventListener('click', function() {
+    analyzeBtn.disabled = true;
+    loadingEl.classList.remove('hidden');
+    listEl.classList.add('hidden');
+    emptyEl.classList.add('hidden');
+    hideFeedback(feedbackEl);
+
+    analyzeEngagement()
+      .then(function(result) {
+        if (!result.success) {
+          showFeedback(feedbackEl, result.error || 'Analysis failed.', 'error');
+          return;
+        }
+        var items = result.results || [];
+        if (items.length === 0) {
+          emptyEl.classList.remove('hidden');
+          return;
+        }
+        renderResults(items);
+      })
+      .catch(function(err) {
+        showFeedback(feedbackEl, 'Unexpected error: ' + err.message, 'error');
+      })
+      .finally(function() {
+        analyzeBtn.disabled = false;
+        loadingEl.classList.add('hidden');
+      });
+  });
+
+  function renderResults(items) {
+    listEl.innerHTML = '';
+
+    // Sort: approve first, then by score descending
+    items.sort(function(a, b) {
+      if (a.decision !== b.decision) return a.decision === 'approve' ? -1 : 1;
+      return b.score - a.score;
+    });
+
+    items.forEach(function(item) {
+      listEl.appendChild(createResultCard(item));
+    });
+    listEl.classList.remove('hidden');
+  }
+
+  function createResultCard(item) {
+    var isApprove  = item.decision === 'approve';
+    var scoreColor = item.score >= 7 ? 'text-green-600 bg-green-50'
+                   : item.score >= 5 ? 'text-yellow-600 bg-yellow-50'
+                   : 'text-red-600 bg-red-50';
+
+    var div = document.createElement('div');
+    div.className = 'border rounded-lg p-4 space-y-3 ' +
+      (isApprove ? 'border-green-200 bg-green-50/30' : 'border-red-200 bg-red-50/30');
+
+    div.innerHTML =
+      // Header row
+      '<div class="flex items-start gap-3">' +
+        '<div class="flex-1 min-w-0">' +
+          '<p class="js-eng-title text-sm font-medium text-gray-800 break-words"></p>' +
+          '<div class="flex flex-wrap items-center gap-2 mt-1.5">' +
+            '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ' +
+              (isApprove ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') + '">' +
+              (isApprove ? '✓ Approve' : '✗ Reject') +
+            '</span>' +
+            '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + scoreColor + '">' +
+              item.score + '/10' +
+            '</span>' +
+            (item.category ? '<span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full js-eng-cat"></span>' : '') +
+            (item.source   ? '<span class="text-xs text-gray-400 js-eng-src"></span>' : '') +
+          '</div>' +
+          '<p class="js-eng-reason text-xs text-gray-600 mt-2 italic"></p>' +
+        '</div>' +
+      '</div>' +
+
+      // Tweet draft
+      '<div>' +
+        '<label class="block text-xs font-medium text-gray-500 mb-1">Tweet draft</label>' +
+        '<textarea class="js-eng-draft w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-y focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" rows="4"></textarea>' +
+        '<p class="js-eng-count text-right text-xs text-gray-400 mt-1">0 / 280</p>' +
+      '</div>' +
+
+      '<div class="js-eng-card-feedback hidden"></div>' +
+
+      // Action buttons
+      '<div class="flex gap-2">' +
+        '<button class="js-eng-approve flex-1 py-2 text-sm font-semibold text-white bg-green-500 rounded-md hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Approve &amp; Post</button>' +
+        '<button class="js-eng-copy flex-1 py-2 text-sm font-semibold text-blue-500 bg-white border border-blue-300 rounded-md hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Copy &amp; Approve</button>' +
+        '<button class="js-eng-reject flex-1 py-2 text-sm font-semibold text-red-500 bg-white border border-red-300 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Reject</button>' +
+      '</div>';
+
+    // Set text safely
+    div.querySelector('.js-eng-title').textContent  = item.title      || '(no title)';
+    div.querySelector('.js-eng-reason').textContent = item.reason     || '';
+    if (item.category) div.querySelector('.js-eng-cat').textContent = item.category;
+    if (item.source)   div.querySelector('.js-eng-src').textContent  = item.source;
+
+    var draftArea = div.querySelector('.js-eng-draft');
+    var charCount = div.querySelector('.js-eng-count');
+    draftArea.value = item.tweetDraft || '';
+    updateCharCount(draftArea, charCount, 280);
+    draftArea.addEventListener('input', function() { updateCharCount(draftArea, charCount, 280); });
+
+    // ---- Wire buttons ----
+    var approveBtn   = div.querySelector('.js-eng-approve');
+    var copyBtn      = div.querySelector('.js-eng-copy');
+    var rejectBtn    = div.querySelector('.js-eng-reject');
+    var cardFeedback = div.querySelector('.js-eng-card-feedback');
+
+    function disableAll() { approveBtn.disabled = copyBtn.disabled = rejectBtn.disabled = true; }
+    function enableAll()  { approveBtn.disabled = copyBtn.disabled = rejectBtn.disabled = false; }
+
+    approveBtn.addEventListener('click', function() {
+      var draft = draftArea.value.trim();
+      if (!draft) { showFeedback(cardFeedback, 'Tweet text is required.', 'error'); return; }
+      if (draft.length > 280) { showFeedback(cardFeedback, 'Tweet exceeds 280 characters.', 'error'); return; }
+      disableAll();
+      approveTweet(item.rowIndex, draft)
+        .then(function(r) {
+          if (r.success) { div.remove(); showFeedback(feedbackEl, 'Tweet posted.', 'success'); }
+          else { showFeedback(cardFeedback, r.error || 'Failed.', 'error'); enableAll(); }
+        })
+        .catch(function(e) { showFeedback(cardFeedback, e.message, 'error'); enableAll(); });
+    });
+
+    copyBtn.addEventListener('click', function() {
+      var draft = draftArea.value.trim();
+      if (!draft) { showFeedback(cardFeedback, 'Tweet text is required.', 'error'); return; }
+      disableAll();
+      if (navigator.clipboard) navigator.clipboard.writeText(draft).catch(function() { draftArea.select(); });
+      else draftArea.select();
+      markApproved(item.rowIndex)
+        .then(function(r) {
+          if (r.success) { div.remove(); showFeedback(feedbackEl, 'Copied — paste it in the X app.', 'success'); }
+          else { showFeedback(cardFeedback, r.error || 'Failed.', 'error'); enableAll(); }
+        })
+        .catch(function(e) { showFeedback(cardFeedback, e.message, 'error'); enableAll(); });
+    });
+
+    rejectBtn.addEventListener('click', function() {
+      disableAll();
+      rejectTweet(item.rowIndex)
+        .then(function(r) {
+          if (r.success) div.remove();
+          else { showFeedback(cardFeedback, r.error || 'Failed.', 'error'); enableAll(); }
+        })
+        .catch(function(e) { showFeedback(cardFeedback, e.message, 'error'); enableAll(); });
+    });
+
+    return div;
+  }
+}());
+
+// ============================================================
+// Feeds tab
+// ============================================================
+
+(function initFeedsTab() {
+  var showAddBtn    = document.getElementById('feedsShowAddBtn');
+  var addForm       = document.getElementById('feedsAddForm');
+  var saveBtn       = document.getElementById('feedsSaveBtn');
+  var cancelBtn     = document.getElementById('feedsCancelBtn');
+  var loadingEl     = document.getElementById('feedsLoading');
+  var feedbackEl    = document.getElementById('feedsFeedback');
+  var formFeedback  = document.getElementById('feedsFormFeedback');
+  var emptyEl       = document.getElementById('feedsEmpty');
+  var listEl        = document.getElementById('feedsList');
+
+  var allFeeds = [];
+
+  // ---- Load & render ----------------------------------------
+
+  function loadFeeds() {
+    loadingEl.classList.remove('hidden');
+    listEl.classList.add('hidden');
+    emptyEl.classList.add('hidden');
+    hideFeedback(feedbackEl);
+
+    listFeeds()
+      .then(function(result) {
+        if (!result.success) {
+          showFeedback(feedbackEl, result.error || 'Failed to load feeds.', 'error');
+          return;
+        }
+        allFeeds = result.feeds || [];
+        renderFeeds();
+      })
+      .catch(function(err) {
+        showFeedback(feedbackEl, 'Unexpected error: ' + err.message, 'error');
+      })
+      .finally(function() {
+        loadingEl.classList.add('hidden');
+      });
+  }
+
+  function renderFeeds() {
+    listEl.innerHTML = '';
+    if (allFeeds.length === 0) {
+      emptyEl.classList.remove('hidden');
+      return;
+    }
+    allFeeds.forEach(function(feed) {
+      listEl.appendChild(createFeedRow(feed));
+    });
+    listEl.classList.remove('hidden');
+  }
+
+  // ---- Build one feed row -----------------------------------
+
+  function createFeedRow(feed) {
+    var div = document.createElement('div');
+    div.className = 'flex items-start gap-3 p-4 border border-gray-200 rounded-lg';
+
+    div.innerHTML =
+      '<div class="flex-1 min-w-0">' +
+        '<div class="flex items-center gap-2 flex-wrap">' +
+          '<p class="js-feed-name text-sm font-medium text-gray-800"></p>' +
+          (feed.skipDescription ? '<span class="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">title only</span>' : '') +
+        '</div>' +
+        '<p class="js-feed-desc text-xs text-gray-500 mt-0.5 leading-relaxed"></p>' +
+        '<a class="js-feed-url text-xs text-blue-400 hover:underline block mt-1 truncate" target="_blank" rel="noopener noreferrer"></a>' +
+      '</div>' +
+      '<div class="flex items-center gap-2 shrink-0 mt-0.5">' +
+        '<button class="js-toggle-btn px-3 py-1 text-xs font-medium rounded-full transition-colors ' +
+          (feed.enabled ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200') + '">' +
+          (feed.enabled ? 'Enabled' : 'Disabled') +
+        '</button>' +
+        '<button class="js-delete-btn text-gray-400 hover:text-red-500 transition-colors" aria-label="Delete feed">' +
+          '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' +
+            '<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>' +
+          '</svg>' +
+        '</button>' +
+      '</div>';
+
+    // Set text safely
+    div.querySelector('.js-feed-name').textContent = feed.name;
+    div.querySelector('.js-feed-desc').textContent = feed.description || '';
+    var urlEl = div.querySelector('.js-feed-url');
+    urlEl.href        = feed.url;
+    urlEl.textContent = feed.url;
+
+    // Toggle enable/disable
+    var toggleBtn = div.querySelector('.js-toggle-btn');
+    toggleBtn.addEventListener('click', function() {
+      var nowEnabled = toggleBtn.textContent.trim() === 'Disabled';
+      toggleBtn.disabled = true;
+
+      toggleFeed(feed.rowIndex, nowEnabled)
+        .then(function(result) {
+          if (result.success) {
+            feed.enabled = nowEnabled;
+            toggleBtn.textContent = nowEnabled ? 'Enabled' : 'Disabled';
+            toggleBtn.className = 'js-toggle-btn px-3 py-1 text-xs font-medium rounded-full transition-colors ' +
+              (nowEnabled ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200');
+          } else {
+            showFeedback(feedbackEl, result.error || 'Failed to update feed.', 'error');
+          }
+        })
+        .catch(function(err) {
+          showFeedback(feedbackEl, 'Unexpected error: ' + err.message, 'error');
+        })
+        .finally(function() {
+          toggleBtn.disabled = false;
+        });
+    });
+
+    // Delete
+    div.querySelector('.js-delete-btn').addEventListener('click', function() {
+      if (!confirm('Delete "' + feed.name + '"? This cannot be undone.')) return;
+
+      deleteFeed(feed.rowIndex)
+        .then(function(result) {
+          if (result.success) {
+            allFeeds = allFeeds.filter(function(f) { return f.rowIndex !== feed.rowIndex; });
+            div.remove();
+            if (allFeeds.length === 0) {
+              listEl.classList.add('hidden');
+              emptyEl.classList.remove('hidden');
+            }
+            showFeedback(feedbackEl, '"' + feed.name + '" deleted.', 'success');
+          } else {
+            showFeedback(feedbackEl, result.error || 'Failed to delete.', 'error');
+          }
+        })
+        .catch(function(err) {
+          showFeedback(feedbackEl, 'Unexpected error: ' + err.message, 'error');
+        });
+    });
+
+    return div;
+  }
+
+  // ---- Add feed form ----------------------------------------
+
+  showAddBtn.addEventListener('click', function() {
+    addForm.classList.remove('hidden');
+    showAddBtn.classList.add('hidden');
+    document.getElementById('feedsNewName').focus();
+  });
+
+  cancelBtn.addEventListener('click', function() {
+    addForm.classList.add('hidden');
+    showAddBtn.classList.remove('hidden');
+    _resetForm();
+  });
+
+  saveBtn.addEventListener('click', function() {
+    var name     = document.getElementById('feedsNewName').value.trim();
+    var url      = document.getElementById('feedsNewUrl').value.trim();
+    var desc     = document.getElementById('feedsNewDesc').value.trim();
+    var skipDesc = document.getElementById('feedsNewSkipDesc').checked;
+
+    if (!name) { showFeedback(formFeedback, 'Name is required.', 'error'); return; }
+    if (!url)  { showFeedback(formFeedback, 'Feed URL is required.', 'error'); return; }
+
+    saveBtn.disabled = true;
+    hideFeedback(formFeedback);
+
+    addFeed(name, url, desc, skipDesc)
+      .then(function(result) {
+        if (result.success) {
+          addForm.classList.add('hidden');
+          showAddBtn.classList.remove('hidden');
+          _resetForm();
+          showFeedback(feedbackEl, result.message || '"' + name + '" added.', 'success');
+          loadFeeds(); // reload to get the rowIndex of the new entry
+        } else {
+          showFeedback(formFeedback, result.error || 'Failed to add feed.', 'error');
+        }
+      })
+      .catch(function(err) {
+        showFeedback(formFeedback, 'Unexpected error: ' + err.message, 'error');
+      })
+      .finally(function() {
+        saveBtn.disabled = false;
+      });
+  });
+
+  function _resetForm() {
+    document.getElementById('feedsNewName').value    = '';
+    document.getElementById('feedsNewUrl').value     = '';
+    document.getElementById('feedsNewDesc').value    = '';
+    document.getElementById('feedsNewSkipDesc').checked = false;
+    hideFeedback(formFeedback);
+  }
+
+  window._loadFeeds = loadFeeds;
+}());
+
+// ============================================================
 // Authentication — login screen + 24 h localStorage session
 // ============================================================
 
@@ -1002,11 +1366,16 @@ function initLoginForm() {
 // ============================================================
 
 (function initAutoTab() {
-  var refreshBtn = document.getElementById('autoRefreshBtn');
-  var loadingEl  = document.getElementById('autoLoading');
-  var feedbackEl = document.getElementById('autoFeedback');
-  var emptyEl    = document.getElementById('autoEmpty');
-  var listEl     = document.getElementById('autoList');
+  var refreshBtn      = document.getElementById('autoRefreshBtn');
+  var loadingEl       = document.getElementById('autoLoading');
+  var feedbackEl      = document.getElementById('autoFeedback');
+  var emptyEl         = document.getElementById('autoEmpty');
+  var listEl          = document.getElementById('autoList');
+  var filterRow       = document.getElementById('autoFilterRow');
+  var sourceFilter    = document.getElementById('autoSourceFilter');
+  var categoryFilter  = document.getElementById('autoCategoryFilter');
+
+  var allItems = []; // full list, never mutated by filters
 
   // ---- Load & render ----------------------------------------
 
@@ -1015,6 +1384,7 @@ function initLoginForm() {
     loadingEl.classList.remove('hidden');
     listEl.classList.add('hidden');
     emptyEl.classList.add('hidden');
+    filterRow.classList.add('hidden');
     hideFeedback(feedbackEl);
 
     listPending()
@@ -1023,7 +1393,9 @@ function initLoginForm() {
           showFeedback(feedbackEl, result.error || 'Failed to load pending articles.', 'error');
           return;
         }
-        renderCards(result.items || []);
+        allItems = result.items || [];
+        populateFilters(allItems);
+        applyFilters();
       })
       .catch(function(err) {
         showFeedback(feedbackEl, 'Unexpected error: ' + err.message, 'error');
@@ -1034,10 +1406,63 @@ function initLoginForm() {
       });
   }
 
+  // ---- Filters ----------------------------------------------
+
+  function populateFilters(items) {
+    // Reset to default option only
+    sourceFilter.innerHTML   = '<option value="">All sources</option>';
+    categoryFilter.innerHTML = '<option value="">All categories</option>';
+
+    var sources    = {};
+    var categories = {};
+
+    items.forEach(function(item) {
+      if (item.source   && !sources[item.source])     sources[item.source]     = true;
+      if (item.category && !categories[item.category]) categories[item.category] = true;
+    });
+
+    Object.keys(sources).sort().forEach(function(s) {
+      var opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s;
+      sourceFilter.appendChild(opt);
+    });
+
+    Object.keys(categories).sort().forEach(function(c) {
+      var opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      categoryFilter.appendChild(opt);
+    });
+
+    // Only show filter row if there's something to filter
+    if (items.length > 0) filterRow.classList.remove('hidden');
+  }
+
+  function applyFilters() {
+    var selectedSource   = sourceFilter.value;
+    var selectedCategory = categoryFilter.value;
+
+    var filtered = allItems.filter(function(item) {
+      var matchSource   = !selectedSource   || item.source   === selectedSource;
+      var matchCategory = !selectedCategory || item.category === selectedCategory;
+      return matchSource && matchCategory;
+    });
+
+    renderCards(filtered);
+  }
+
+  sourceFilter.addEventListener('change',   applyFilters);
+  categoryFilter.addEventListener('change', applyFilters);
+
+  // ---- Render & empty state ---------------------------------
+
   function renderCards(items) {
     listEl.innerHTML = '';
+    emptyEl.classList.add('hidden');
     if (items.length === 0) {
       emptyEl.classList.remove('hidden');
+      listEl.classList.add('hidden');
       return;
     }
     items.forEach(function(item) {
@@ -1047,16 +1472,20 @@ function initLoginForm() {
   }
 
   function checkIfEmpty() {
-    if (listEl.children.length === 0) {
-      listEl.classList.add('hidden');
-      emptyEl.classList.remove('hidden');
-    }
+    // Remove card from allItems then re-apply filters so count stays correct
+    var visibleCards = listEl.querySelectorAll('.border');
+    if (visibleCards.length === 0) applyFilters();
   }
 
   // ---- Build one pending article card -----------------------
 
   function createCard(item) {
-    var fetchedDate = item.fetchedAt ? new Date(item.fetchedAt).toLocaleString() : '';
+    var fetchedDate = '';
+    if (item.fetchedAt) {
+      var d = new Date(item.fetchedAt);
+      fetchedDate = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) +
+                    ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    }
 
     var div = document.createElement('div');
     div.className = 'border border-gray-200 rounded-lg p-4 space-y-3';
@@ -1068,7 +1497,7 @@ function initLoginForm() {
         '<div class="flex flex-wrap items-center gap-2 mt-1.5">' +
           '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 js-source-badge"></span>' +
           '<span class="js-category-badge hidden inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600"></span>' +
-          (fetchedDate ? '<span class="text-xs text-gray-400">' + escapeHtml(fetchedDate) + '</span>' : '') +
+          (fetchedDate ? '<span class="text-xs text-gray-400">Fetched: ' + escapeHtml(fetchedDate) + '</span>' : '') +
         '</div>' +
       '</div>' +
 
@@ -1077,7 +1506,7 @@ function initLoginForm() {
         '<label class="block text-xs font-medium text-gray-500 mb-1">' +
           'Tweet draft <span class="font-normal text-gray-400">(edit before approving)</span>' +
         '</label>' +
-        '<textarea class="js-draft w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-y focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" rows="3"></textarea>' +
+        '<textarea class="js-draft w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-y focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" rows="5"></textarea>' +
         '<p class="js-char-count text-right text-xs text-gray-400 mt-1">0 / 280</p>' +
       '</div>' +
 
@@ -1139,6 +1568,8 @@ function initLoginForm() {
       approveTweet(item.rowIndex, draft)
         .then(function(result) {
           if (result.success) {
+            // Remove from allItems so filter count stays accurate
+            allItems = allItems.filter(function(i) { return i.rowIndex !== item.rowIndex; });
             div.remove();
             checkIfEmpty();
             showFeedback(feedbackEl, 'Tweet posted: "' + draft.substring(0, 60) + (draft.length > 60 ? '…' : '') + '"', 'success');
@@ -1180,6 +1611,7 @@ function initLoginForm() {
       markApproved(item.rowIndex)
         .then(function(result) {
           if (result.success) {
+            allItems = allItems.filter(function(i) { return i.rowIndex !== item.rowIndex; });
             div.remove();
             checkIfEmpty();
             showFeedback(feedbackEl, 'Copied to clipboard — paste it in the X app.', 'success');
@@ -1205,6 +1637,7 @@ function initLoginForm() {
       rejectTweet(item.rowIndex)
         .then(function(result) {
           if (result.success) {
+            allItems = allItems.filter(function(i) { return i.rowIndex !== item.rowIndex; });
             div.remove();
             checkIfEmpty();
           } else {
@@ -1238,24 +1671,26 @@ document.addEventListener('DOMContentLoaded', function() {
   initCronBuilder('clone');
   initCronBuilder('new');
 
-  var viewTabLoaded = false;
-  var autoTabLoaded = false;
+  var viewTabLoaded  = false;
+  var autoTabLoaded  = false;
+  var feedsTabLoaded = false;
 
   document.getElementById('tabCloneBtn').addEventListener('click', function() { switchTab('clone'); });
   document.getElementById('tabNewBtn').addEventListener('click',   function() { switchTab('new'); });
   document.getElementById('tabViewBtn').addEventListener('click',  function() {
     switchTab('view');
-    if (!viewTabLoaded) {
-      viewTabLoaded = true;
-      window._loadViewTweets();
-    }
+    if (!viewTabLoaded) { viewTabLoaded = true; window._loadViewTweets(); }
   });
   document.getElementById('tabAutoBtn').addEventListener('click',  function() {
     switchTab('auto');
-    if (!autoTabLoaded) {
-      autoTabLoaded = true;
-      window._loadAutoPending();
-    }
+    if (!autoTabLoaded) { autoTabLoaded = true; window._loadAutoPending(); }
+  });
+  document.getElementById('tabFeedsBtn').addEventListener('click', function() {
+    switchTab('feeds');
+    if (!feedsTabLoaded) { feedsTabLoaded = true; window._loadFeeds(); }
+  });
+  document.getElementById('tabEngageBtn').addEventListener('click', function() {
+    switchTab('engage');
   });
 
   // Auth gate: show app immediately if a valid session exists, otherwise show login
