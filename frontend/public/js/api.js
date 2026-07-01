@@ -191,3 +191,13 @@ async function deleteFeed(rowIndex) {
 async function analyzeEngagement() {
   return gasPost({ action: 'analyzeEngagement' });
 }
+
+/**
+ * Updates config columns of an existing feed row.
+ * @param {number} rowIndex
+ * @param {{ maxNew, fetchFullArticle, tweetLength, promptStyle }} data
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function updateFeed(rowIndex, data) {
+  return gasPost({ action: 'updateFeed', rowIndex: rowIndex, ...data });
+}

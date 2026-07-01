@@ -73,6 +73,8 @@ function doPost(e) {
       result = handleAddFeed(params);
     } else if (action === 'deleteFeed') {
       result = handleDeleteFeed(params);
+    } else if (action === 'updateFeed') {
+      result = handleUpdateFeed(params);
     } else if (action === 'analyzeEngagement') {
       result = handleAnalyzeEngagement();
     } else {
@@ -790,5 +792,34 @@ function _analyzeEngagementWithGroq(tweets) {
     return { results: enriched };
   } catch (e) {
     return { error: 'Groq call failed: ' + e.message };
+  }
+}
+
+/**
+ * Updates the config columns (F–I) of an existing feed row.
+ * @param {{ rowIndex, maxNew, fetchFullArticle, tweetLength, promptStyle }} params
+ * @returns {{ success: boolean, message?: string, error?: string }}
+ */
+function handleUpdateFeed(params) {
+  try {
+    var rowIndex = Number(params.rowIndex);
+    if (!rowIndex || rowIndex < 2) {
+      return { success: false, error: 'Invalid row index.' };
+    }
+    var sheet   = getOrCreateFeedSheet();
+    var maxNew  = parseInt(params.maxNew, 10);
+    var length  = parseInt(params.tweetLength, 10);
+    var style   = String(params.promptStyle || 'short_take').trim().toLowerCase();
+    var fetchFull = params.fetchFullArticle === true ||
+                    String(params.fetchFullArticle).toLowerCase() === 'true';
+
+    sheet.getRange(rowIndex, FS_COL_MAX_NEW).setValue(isNaN(maxNew) || maxNew < 1 ? 1 : maxNew);
+    sheet.getRange(rowIndex, FS_COL_FETCH_FULL_ARTICLE).setValue(fetchFull);
+    sheet.getRange(rowIndex, FS_COL_TWEET_LENGTH).setValue(isNaN(length) || length < 100 ? 280 : length);
+    sheet.getRange(rowIndex, FS_COL_PROMPT_STYLE).setValue(style === 'educational' ? 'educational' : 'short_take');
+
+    return { success: true, message: 'Feed updated.' };
+  } catch (err) {
+    return { success: false, error: 'Failed to update feed: ' + err.message };
   }
 }
