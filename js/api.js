@@ -1,13 +1,13 @@
 /**
  * api.js — All GAS API calls.
- * https://script.google.com/macros/s/AKfycbw8RGfl8EIqR0mcvtDenBJssSTmfF-n_dgPmVNzTM8b70YHCWTLwdI4mN7P_ArwIcL2HA/exec and 6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259 are replaced at build time by inject-env.js.
+ * https://script.google.com/macros/s/AKfycbzh44rYqOKFmukgqXxrjc39UwiXC_IxOTna0Z4gtoYFie2PHj3APK2aVXcrR01MnR6sUQ/exec and 6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259 are replaced at build time by inject-env.js.
  * GAS_URL and API_KEY are stored as GitHub Secrets and injected by GitHub Actions.
  *
  * CORS note: Content-Type: text/plain is a "simple request" — no preflight.
  * GAS receives the raw body in e.postData.contents and we JSON.parse it there.
  */
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbw8RGfl8EIqR0mcvtDenBJssSTmfF-n_dgPmVNzTM8b70YHCWTLwdI4mN7P_ArwIcL2HA/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzh44rYqOKFmukgqXxrjc39UwiXC_IxOTna0Z4gtoYFie2PHj3APK2aVXcrR01MnR6sUQ/exec';
 const API_KEY = '6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259';
 
 /**
@@ -141,4 +141,53 @@ async function rejectTweet(rowIndex) {
  */
 async function markApproved(rowIndex) {
   return gasPost({ action: 'markApproved', rowIndex: rowIndex });
+}
+
+/**
+ * Fetches all feeds from the rss_feeds sheet.
+ * @returns {Promise<{success: boolean, feeds?: Array<Object>, error?: string}>}
+ */
+async function listFeeds() {
+  return gasPost({ action: 'listFeeds' });
+}
+
+/**
+ * Enables or disables a feed by row index.
+ * @param {number} rowIndex
+ * @param {boolean} enabled
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function toggleFeed(rowIndex, enabled) {
+  return gasPost({ action: 'toggleFeed', rowIndex: rowIndex, enabled: enabled });
+}
+
+/**
+ * Adds a new feed to the rss_feeds sheet.
+ * @param {string} name
+ * @param {string} url
+ * @param {string} description
+ * @param {boolean} skipDescription
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function addFeed(name, url, description, skipDescription) {
+  return gasPost({ action: 'addFeed', name: name, url: url,
+                   description: description, skipDescription: skipDescription });
+}
+
+/**
+ * Deletes a feed row from the rss_feeds sheet.
+ * @param {number} rowIndex
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function deleteFeed(rowIndex) {
+  return gasPost({ action: 'deleteFeed', rowIndex: rowIndex });
+}
+
+/**
+ * Sends the latest pending tweets to Groq for engagement analysis.
+ * Returns approve/reject recommendations with scores and reasons.
+ * @returns {Promise<{success: boolean, results?: Array<Object>, error?: string}>}
+ */
+async function analyzeEngagement() {
+  return gasPost({ action: 'analyzeEngagement' });
 }
