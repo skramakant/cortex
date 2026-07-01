@@ -1459,12 +1459,24 @@ function initLoginForm() {
 
   function renderCards(items) {
     listEl.innerHTML = '';
-    emptyEl.classList.add('hidden');
     if (items.length === 0) {
       emptyEl.classList.remove('hidden');
-      listEl.classList.add('hidden');
       return;
     }
+    // Sort: approve verdict first → reject verdict → unanalyzed, then by score desc
+    items.sort(function(a, b) {
+      var av = a.aiVerdict || '', bv = b.aiVerdict || '';
+      var aIsApprove = av.indexOf('approve') === 0;
+      var bIsApprove = bv.indexOf('approve') === 0;
+      var aIsReject  = av.indexOf('reject')  === 0;
+      var bIsReject  = bv.indexOf('reject')  === 0;
+      if (aIsApprove !== bIsApprove) return aIsApprove ? -1 : 1;
+      if (aIsReject  !== bIsReject)  return aIsReject  ? -1 : 1;
+      // Both same bucket — sort by score descending
+      var aScore = parseInt((av.match(/\((\d+)\//) || [])[1] || '0', 10);
+      var bScore = parseInt((bv.match(/\((\d+)\//) || [])[1] || '0', 10);
+      return bScore - aScore;
+    });
     items.forEach(function(item) {
       listEl.appendChild(createCard(item));
     });
@@ -1487,6 +1499,25 @@ function initLoginForm() {
                     ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     }
 
+    // Parse ai_verdict: "approve (8/10): reason text" or "reject (3/10): reason text"
+    var verdict = null;
+    if (item.aiVerdict && item.aiVerdict.trim()) {
+      var colonIdx    = item.aiVerdict.indexOf(':');
+      var decPart     = colonIdx !== -1 ? item.aiVerdict.substring(0, colonIdx).trim() : item.aiVerdict.trim();
+      var reasonPart  = colonIdx !== -1 ? item.aiVerdict.substring(colonIdx + 1).trim() : '';
+      var isApprove   = decPart.toLowerCase().indexOf('approve') !== -1;
+      var scoreMatch  = decPart.match(/\((\d+)\/10\)/);
+      verdict = {
+        decision:  isApprove ? 'approve' : 'reject',
+        score:     scoreMatch ? scoreMatch[1] : '',
+        reason:    reasonPart,
+        badgeClass: isApprove ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700',
+        label:      isApprove
+          ? '✓ AI: approve' + (scoreMatch ? ' (' + scoreMatch[1] + '/10)' : '')
+          : '✗ AI: reject'  + (scoreMatch ? ' (' + scoreMatch[1] + '/10)' : ''),
+      };
+    }
+
     var div = document.createElement('div');
     div.className = 'border border-gray-200 rounded-lg p-4 space-y-3';
 
@@ -1497,8 +1528,10 @@ function initLoginForm() {
         '<div class="flex flex-wrap items-center gap-2 mt-1.5">' +
           '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 js-source-badge"></span>' +
           '<span class="js-category-badge hidden inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600"></span>' +
+          (verdict ? '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ' + verdict.badgeClass + '">' + escapeHtml(verdict.label) + '</span>' : '') +
           (fetchedDate ? '<span class="text-xs text-gray-400">Fetched: ' + escapeHtml(fetchedDate) + '</span>' : '') +
         '</div>' +
+        (verdict && verdict.reason ? '<p class="js-verdict-reason text-xs text-gray-500 italic mt-1 break-words"></p>' : '') +
       '</div>' +
 
       // Tweet draft editor
@@ -1531,6 +1564,12 @@ function initLoginForm() {
       var catBadge = div.querySelector('.js-category-badge');
       catBadge.textContent = item.category;
       catBadge.classList.remove('hidden');
+    }
+
+    // Show verdict reason if present
+    if (verdict && verdict.reason) {
+      var reasonEl = div.querySelector('.js-verdict-reason');
+      if (reasonEl) reasonEl.textContent = verdict.reason;
     }
 
     // Pre-fill draft
