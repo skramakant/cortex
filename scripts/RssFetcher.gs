@@ -289,7 +289,8 @@ function generateTweetWithGemini(title, articleText) {
     '- No URLs, links, or hashtags\n' +
     '- Do NOT start with "I just", "Just", "Breaking:", "Hot take:"\n' +
     '- Do NOT end with "what\'s next?", "thoughts?", "the future is here"\n' +
-    '- Do NOT mention the source or publication name\n' +
+    '- Do NOT mention the news source or publication name (e.g. VentureBeat, TechCrunch, HackerNews)\n' +
+    '- DO use model names, product names, company names, and technical specs — they are the point\n' +
     '- Return the tweet text ONLY — no labels, no quotes, nothing else\n\n' +
     'Also classify the article into exactly one of these categories:\n' +
     '"AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
