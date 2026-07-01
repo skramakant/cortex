@@ -1,13 +1,13 @@
 /**
  * api.js — All GAS API calls.
- * https://script.google.com/macros/s/AKfycbzh44rYqOKFmukgqXxrjc39UwiXC_IxOTna0Z4gtoYFie2PHj3APK2aVXcrR01MnR6sUQ/exec and 6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259 are replaced at build time by inject-env.js.
+ * https://script.google.com/macros/s/AKfycbw12R5uJf7rOOniIQr_KopxvacA2dPRpsGB-vdMHGtN03Nu57wK81V7YNc8vH7JqstYZw/exec and 6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259 are replaced at build time by inject-env.js.
  * GAS_URL and API_KEY are stored as GitHub Secrets and injected by GitHub Actions.
  *
  * CORS note: Content-Type: text/plain is a "simple request" — no preflight.
  * GAS receives the raw body in e.postData.contents and we JSON.parse it there.
  */
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzh44rYqOKFmukgqXxrjc39UwiXC_IxOTna0Z4gtoYFie2PHj3APK2aVXcrR01MnR6sUQ/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbw12R5uJf7rOOniIQr_KopxvacA2dPRpsGB-vdMHGtN03Nu57wK81V7YNc8vH7JqstYZw/exec';
 const API_KEY = '6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259';
 
 /**
@@ -190,4 +190,14 @@ async function deleteFeed(rowIndex) {
  */
 async function analyzeEngagement() {
   return gasPost({ action: 'analyzeEngagement' });
+}
+
+/**
+ * Updates config columns of an existing feed row.
+ * @param {number} rowIndex
+ * @param {{ maxNew, fetchFullArticle, tweetLength, promptStyle }} data
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function updateFeed(rowIndex, data) {
+  return gasPost({ action: 'updateFeed', rowIndex: rowIndex, ...data });
 }
