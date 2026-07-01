@@ -16,20 +16,41 @@ function switchTab(tab) {
   document.getElementById('tabFeeds').classList.toggle('hidden',  tab !== 'feeds');
   document.getElementById('tabEngage').classList.toggle('hidden', tab !== 'engage');
 
-  ['tabCloneBtn', 'tabNewBtn', 'tabViewBtn', 'tabAutoBtn', 'tabFeedsBtn', 'tabEngageBtn'].forEach(function(id) {
+  var tabMap = {
+    'tabCloneBtn':  'clone',
+    'tabNewBtn':    'new',
+    'tabViewBtn':   'view',
+    'tabAutoBtn':   'auto',
+    'tabEngageBtn': 'engage',
+    'tabFeedsBtn':  'feeds',
+  };
+
+  Object.keys(tabMap).forEach(function(id) {
     var btn    = document.getElementById(id);
-    var active = (id === 'tabCloneBtn'  && tab === 'clone')  ||
-                 (id === 'tabNewBtn'    && tab === 'new')     ||
-                 (id === 'tabViewBtn'   && tab === 'view')    ||
-                 (id === 'tabAutoBtn'   && tab === 'auto')    ||
-                 (id === 'tabFeedsBtn'  && tab === 'feeds')   ||
-                 (id === 'tabEngageBtn' && tab === 'engage');
-    btn.classList.toggle('border-b-2',      active);
-    btn.classList.toggle('border-blue-500', active);
-    btn.classList.toggle('text-blue-500',   active);
-    btn.classList.toggle('font-semibold',   active);
-    btn.classList.toggle('text-gray-500',   !active);
+    var active = tabMap[id] === tab;
+    btn.classList.toggle('bg-blue-50',    active);
+    btn.classList.toggle('text-blue-600', active);
+    btn.classList.toggle('font-semibold', active);
+    btn.classList.toggle('text-gray-600', !active);
+    btn.classList.toggle('hover:bg-gray-50', !active);
   });
+
+  // Close sidebar on mobile after selecting a tab
+  _closeSidebar();
+}
+
+function _openSidebar() {
+  document.getElementById('sidebar').classList.remove('-translate-x-full');
+  document.getElementById('sidebar').classList.add('translate-x-0');
+  document.getElementById('sidebarBackdrop').classList.remove('hidden');
+}
+
+function _closeSidebar() {
+  var sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+  sidebar.classList.add('-translate-x-full');
+  sidebar.classList.remove('translate-x-0');
+  document.getElementById('sidebarBackdrop').classList.add('hidden');
 }
 
 // ============================================================
@@ -1731,6 +1752,10 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('tabEngageBtn').addEventListener('click', function() {
     switchTab('engage');
   });
+
+  // Sidebar toggle (mobile)
+  document.getElementById('sidebarToggle').addEventListener('click', _openSidebar);
+  document.getElementById('sidebarBackdrop').addEventListener('click', _closeSidebar);
 
   // Auth gate: show app immediately if a valid session exists, otherwise show login
   if (isAuthenticated()) {
