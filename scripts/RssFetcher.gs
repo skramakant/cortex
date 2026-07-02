@@ -294,7 +294,7 @@ function _extractText(html) {
                    .replace(/&nbsp;/g, ' ')
                    .replace(/\s+/g,    ' ')
                    .trim();
-    return text.substring(0, 1500);
+    return text.substring(0, 3000);
   } catch (e) {
     return '';
   }
@@ -333,29 +333,58 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
 
   if (promptStyle === 'educational') {
     prompt =
-      'You are an expert software engineer and tech educator. Your tweets make complex technical topics easy to understand through real-world examples from companies everyone knows.\n\n' +
-      'Write an educational tweet based on this article. Your tweet should:\n' +
-      '- Start with a specific real-world use case from a well-known company that is genuinely known for using this technology or concept — pick the company that fits the topic, do not force Uber, Netflix or Amazon if they are not relevant\n' +
-      '- Explain the core concept step by step in plain language a mid-level developer can follow\n' +
-      '- Give 2–3 concrete examples from different companies that actually use this in production — only name companies that are credibly associated with this specific topic\n' +
-      '- Include a short practical takeaway or "how to identify if you need this" section at the end\n' +
-      '- Use blank lines between sections for readability\n' +
-      '- Sound like a knowledgeable engineer sharing hard-won knowledge, not a textbook\n' +
-      '- No URLs, no hashtags, no markdown headers\n' +
-      '- Target length: ' + tweetLength + ' characters\n\n' +
-      'Also classify the article into exactly one category:\n' +
-      '"AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
-      'Respond with valid JSON only:\n' +
-      '{"tweet": "...", "category": "..."}\n\n' +
+      'You are a senior engineer who teaches through writing. You explain technical concepts from genuine experience, not from a template.\n\n' +
+      'Write an educational tweet based on this article. Your audience is a developer with 3-5 years of experience who may not know this specific technology.\n\n' +
+      'Core rules:\n' +
+      '- Extract the universal principle any developer can apply. The company\'s specific implementation is just an example — the lesson should be transferable.\n' +
+      '- The FIRST SENTENCE must be a hook: a surprising fact, a counterintuitive insight, or a specific problem. NOT "X allows customers to..." or "X is a complex problem that involves..."\n' +
+      '- Include at least one specific number or concrete detail from the article.\n' +
+      '- Use plain, everyday language. If you use a technical term, explain it immediately in plain English.\n' +
+      '- Maximum 4 short paragraphs. Stop when the point is made.\n' +
+      '- Never do: Company A uses this. Company B uses this too. Company C also uses this.\n' +
+      '- Discuss the tradeoff when relevant — what you gain, what you give up.\n' +
+      '- You MUST use a blank line between paragraphs.\n' +
+      '- Write in short sentences. 1–3 sentences per paragraph.\n' +
+      '- No URLs, no hashtags, no "so how do you identify", no "it\'s time to".\n' +
+      '- Target length: ' + tweetLength + ' characters.\n\n' +
+      'Banned openers (never start a tweet this way):\n' +
+      '- "As a developer...", "As an engineer...", "As someone who..."\n' +
+      '- "When building a...", "When running a..."\n' +
+      '- "After nearly X years...", "In my X years of...", "Having spent X years..."\n' +
+      '- Any opener that is about the writer\'s career length or experience — this is a blog post opener, not a hook\n\n' +
+      'Banned phrases anywhere in the tweet:\n' +
+      '- "Let\'s break it down", "Let\'s break down", "so, how do you identify"\n' +
+      '- "battle scars", "the payoff is worth it", "the payoff is a", "The question is, how can we"\n' +
+      '- "it\'s time to", "make sure to", "earned their stripes"\n' +
+      '- "mirrors the chaos of", "reflects the complexity of" — vague analogies that add nothing\n' +
+      '- "serves as a reminder", "is a clear indication", "highlights the importance of"\n' +
+      '- Ending with a question like "The question is..." or "How can we ensure..."\n\n' +
+      'Here are two examples of the exact style expected:\n\n' +
+
+      'Example 1 (concept explained through a real use case, specific numbers):\n' +
+      '"The data stored on S3 is replicated multiple times to make sure it is never lost. If they simply stored multiple copies at the exabyte scale, it would get expensive very quickly.\n\n' +
+      'Erasure coding solves this. Split your data into k chunks, then compute m extra parity chunks. You can lose any m of those chunks and still reconstruct the original data.\n\n' +
+      'S3 uses 9 data shards and 4 parity shards spread across availability zones. That gives 99.999999999% durability at only 1.5x the data size — compared to 3x for triple replication.\n\n' +
+      'The tradeoff is compute. Rebuilding missing chunks requires CPU, while replication just reads a copy. This is why you tune the number of parity shards carefully."\n\n' +
+
+      'Example 2 (universal principle, no companies needed, short and punchy):\n' +
+      '"LLMs are just the next layer of abstraction in how we tell machines what to do.\n\n' +
+      'You don\'t think about the machine code a compiler generates. You write Python and trust the layers below.\n\n' +
+      'An LLM is another layer. Non-deterministic for now, but the same idea. You don\'t stop being responsible for correctness just because the layer below is smarter.\n\n' +
+      'The tool changed. The responsibility did not."\n\n' +
+
+      'Now write a tweet for this article:\n' +
       'Article title: ' + title + '\n\n' +
-      contextBlock;
+      contextBlock +
+      'Also classify into one category: "AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
+      'Respond with valid JSON only: {"tweet": "...", "category": "..."}';
   } else {
     prompt =
       'You are a tech industry insider — a senior engineer with 15 years of experience who has strong opinions and does not sugarcoat things.\n\n' +
       'Your job: write one tweet based on the article. Use this exact 3-line structure:\n\n' +
       'Line 1: A provocative statement or surprising fact from the article — the hook. Make someone stop scrolling. (1 sentence)\n' +
       'Line 2: The context or why it matters — add the detail that makes line 1 credible. (1–2 sentences)\n' +
-      'Line 3: The implication or your take — what this means for developers, companies, or the industry. (1 sentence)\n\n' +
+      'Line 3: The implication or your take — what this means for developers, companies, or the industry. Must be specific and sharp, not a vague analogy like "this mirrors real-world complexity" or "this reflects broader trends". (1 sentence)\n\n' +
       'Separate each line with a newline character. Total length between 200 and ' + tweetLength + ' characters.\n\n' +
       'Voice: confident, plain, no hype words, no corporate speak.\n\n' +
       'Hard rules:\n' +
