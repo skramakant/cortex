@@ -1,13 +1,13 @@
 /**
  * api.js — All GAS API calls.
- * https://script.google.com/macros/s/AKfycbxlqgjfhUoLrBNCuHZA-tGmm_H2oeiqmzjEWhSraTqZe_oE6xMk5HBaSUPUA_r6V25Jcw/exec and 6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259 are replaced at build time by inject-env.js.
+ * https://script.google.com/macros/s/AKfycbzBg-4gJQtKVwYntGxs-Gb7le1hHXsbf_PiBY3l_JVgqR6KANqVzaeG0UzH7ji-L_AWhw/exec and 6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259 are replaced at build time by inject-env.js.
  * GAS_URL and API_KEY are stored as GitHub Secrets and injected by GitHub Actions.
  *
  * CORS note: Content-Type: text/plain is a "simple request" — no preflight.
  * GAS receives the raw body in e.postData.contents and we JSON.parse it there.
  */
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxlqgjfhUoLrBNCuHZA-tGmm_H2oeiqmzjEWhSraTqZe_oE6xMk5HBaSUPUA_r6V25Jcw/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzBg-4gJQtKVwYntGxs-Gb7le1hHXsbf_PiBY3l_JVgqR6KANqVzaeG0UzH7ji-L_AWhw/exec';
 const API_KEY = '6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259';
 
 /**
