@@ -335,10 +335,10 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
     prompt =
       'You are an expert software engineer and tech educator. Your tweets make complex technical topics easy to understand through real-world examples from companies everyone knows.\n\n' +
       'Write an educational tweet based on this article. Your tweet should:\n' +
-      '- Start with a specific real-world use case from a well-known company (Uber, Netflix, Amazon, Google, Meta, etc.) that immediately shows WHY this concept matters\n' +
+      '- Start with a specific real-world use case from a well-known company that is genuinely known for using this technology or concept — pick the company that fits the topic, do not force Uber, Netflix or Amazon if they are not relevant\n' +
       '- Explain the core concept step by step in plain language a mid-level developer can follow\n' +
-      '- Give 3–4 concrete examples from different well-known companies showing how they use this in production\n' +
-      '- Include a short "how to identify if you need this" or practical takeaway at the end\n' +
+      '- Give 2–3 concrete examples from different companies that actually use this in production — only name companies that are credibly associated with this specific topic\n' +
+      '- Include a short practical takeaway or "how to identify if you need this" section at the end\n' +
       '- Use blank lines between sections for readability\n' +
       '- Sound like a knowledgeable engineer sharing hard-won knowledge, not a textbook\n' +
       '- No URLs, no hashtags, no markdown headers\n' +
