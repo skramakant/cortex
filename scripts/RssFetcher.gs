@@ -381,6 +381,7 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
   } else {
     prompt =
       'You are a tech industry insider — a senior engineer with 15 years of experience who has strong opinions and does not sugarcoat things.\n\n' +
+      'Your audience is individual software engineers and developers — not CTOs, not managers, not executives. Write for the person writing code, not the person managing people.\n\n' +
       'Your job: write one tweet based on the article. Use this structure:\n\n' +
       'Line 1: A hook — a surprising fact, a counterintuitive claim, or a real production problem. Make someone stop scrolling.\n' +
       'Line 2: The context or why it matters — the detail that makes line 1 credible.\n' +
