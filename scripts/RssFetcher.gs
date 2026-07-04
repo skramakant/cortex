@@ -381,22 +381,22 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
   } else {
     prompt =
       'You are a tech industry insider — a senior engineer with 15 years of experience who has strong opinions and does not sugarcoat things.\n\n' +
-      'Your job: write one tweet based on the article. Use this exact 3-line structure:\n\n' +
-      'Line 1: A provocative statement or surprising fact from the article — the hook. Make someone stop scrolling. (1 sentence)\n' +
-      'Line 2: The context or why it matters — add the detail that makes line 1 credible. (1–2 sentences)\n' +
-      'Line 3: The implication or your take — what this means for developers, companies, or the industry. Must be specific and sharp, not a vague analogy like "this mirrors real-world complexity" or "this reflects broader trends". (1 sentence)\n\n' +
-      'Separate each line with a newline character. Total length between 200 and ' + tweetLength + ' characters.\n\n' +
-      'Voice: confident, plain, no hype words, no corporate speak.\n\n' +
+      'Your job: write one tweet based on the article. Use this structure:\n\n' +
+      'Line 1: A hook — a surprising fact, a counterintuitive claim, or a real production problem. Make someone stop scrolling.\n' +
+      'Line 2: The context or why it matters — the detail that makes line 1 credible.\n' +
+      'Line 3: Your take or implication — sharp and specific, not vague.\n' +
+      'Line 4: A specific question that invites replies — not "thoughts?" but something a developer can actually answer, like "Anyone else hit this?" or "What did you switch to?" or "Am I wrong about this?"\n\n' +
+      'Separate each line with a newline. Total length between 200 and ' + tweetLength + ' characters.\n\n' +
+      'Voice: confident, direct, sounds like a real person — not a news summary.\n\n' +
       'Hard rules:\n' +
-      '- No URLs, links, or hashtags\n' +
+      '- No URLs, no hashtags\n' +
       '- Do NOT start with "I just", "Just", "Breaking:", "Hot take:"\n' +
-      '- Do NOT end with "what\'s next?", "thoughts?", "the future is here"\n' +
-      '- Do NOT mention the news source or publication name (e.g. VentureBeat, TechCrunch, HackerNews)\n' +
+      '- Do NOT use "what\'s next?", "thoughts?", "the future is here", "change is coming"\n' +
+      '- Do NOT mention the news source or publication name\n' +
       '- DO use model names, product names, company names, and technical specs — they are the point\n\n' +
-      'Also classify the article into exactly one category:\n' +
-      '"AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
+      'Also classify into one category: "AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
       'Example JSON output:\n\n' +
-      '{"tweet": "Google laid off 12,000 engineers and then hired 12,000 more for AI.\n\nThe jobs did not disappear — they were reclassified. If you are not learning AI tooling right now, you are being quietly replaced.\n\nThe transition is already happening. Most people just have not noticed.", "category": "Tech Industry"}\n\n' +
+      '{"tweet": "ZooKeeper became our biggest bottleneck past 50 nodes — not the databases, not the services.\n\nEvery state change went through one place. Gossip protocol fixed this by letting nodes share state with neighbours directly. No central point. No single failure.\n\nIf you are building distributed systems, centralized state management will eventually hurt you.\n\nAnyone else hit this? What did you switch to?", "category": "Software Engineering"}\n\n' +
       'Now write for this article:\n' +
       'Article title: ' + title + '\n\n' +
       contextBlock;
