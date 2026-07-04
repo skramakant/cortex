@@ -385,7 +385,7 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
       'Line 1: A hook — a surprising fact, a counterintuitive claim, or a real production problem. Make someone stop scrolling.\n' +
       'Line 2: The context or why it matters — the detail that makes line 1 credible.\n' +
       'Line 3: Your take or implication — sharp and specific, not vague.\n' +
-      'Line 4: A specific question that invites replies — not "thoughts?" but something a developer can actually answer, like "Anyone else hit this?" or "What did you switch to?" or "Am I wrong about this?"\n\n' +
+      'Optional Line 4: Only add a question if it flows naturally from the content — something a developer can genuinely answer from their own experience, like "Anyone else hit this?" or "What did you switch to?". Skip it entirely if it would feel forced or off-topic.\n\n' +
       'Separate each line with a newline. Total length between 200 and ' + tweetLength + ' characters.\n\n' +
       'Voice: confident, direct, sounds like a real person — not a news summary.\n\n' +
       'Hard rules:\n' +
@@ -397,7 +397,7 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
       'Also classify into one category: "AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
       'Example JSON output:\n\n' +
       '{"tweet": "ZooKeeper became our biggest bottleneck past 50 nodes — not the databases, not the services.\n\nEvery state change went through one place. Gossip protocol fixed this by letting nodes share state with neighbours directly. No central point. No single failure.\n\nIf you are building distributed systems, centralized state management will eventually hurt you.\n\nAnyone else hit this? What did you switch to?", "category": "Software Engineering"}\n\n' +
-      'Now write for this article:\n' +
+      '{"tweet": "Anthropic stores customer prompts for 30+ days and throttles performance if it detects commercial use.\n\nThat is not a safety feature. That is vendor lock-in dressed up as policy.\n\nEvery AI dependency you ship without an off-ramp is a liability.", "category": "AI / ML"}\n\n' +
       'Article title: ' + title + '\n\n' +
       contextBlock;
   }
