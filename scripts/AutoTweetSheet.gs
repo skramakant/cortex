@@ -21,6 +21,7 @@ var AT_COL_FETCHED_AT   = 6;
 var AT_COL_ACTIONED_AT  = 7;
 var AT_COL_CATEGORY     = 8;
 var AT_COL_AI_VERDICT   = 9;
+var AT_COL_POLL_TWEET   = 10;
 
 /**
  * Returns the auto_tweets sheet, creating it with headers if it doesn't exist.
@@ -31,7 +32,7 @@ function getOrCreateAutoTweetSheet() {
   var sheet = ss.getSheetByName('auto_tweets');
   if (!sheet) {
     sheet = ss.insertSheet('auto_tweets');
-    sheet.getRange(1, 1, 1, 9).setValues([[
+    sheet.getRange(1, 1, 1, 10).setValues([[
       'article url',
       'source',
       'article title',
@@ -40,7 +41,8 @@ function getOrCreateAutoTweetSheet() {
       'fetched at',
       'actioned at',
       'category',
-      'ai verdict'
+      'ai verdict',
+      'poll tweet'
     ]]);
     sheet.setFrozenRows(1);
     sheet.setColumnWidth(AT_COL_ARTICLE_URL,  300);
@@ -48,11 +50,16 @@ function getOrCreateAutoTweetSheet() {
     sheet.setColumnWidth(AT_COL_TWEET_DRAFT,  350);
     sheet.setColumnWidth(AT_COL_CATEGORY,     140);
     sheet.setColumnWidth(AT_COL_AI_VERDICT,   260);
+    sheet.setColumnWidth(AT_COL_POLL_TWEET,   350);
   } else {
-    // Ensure ai_verdict header exists on older sheets created before this column was added
+    // Ensure new columns exist on older sheets
     if (sheet.getLastColumn() < AT_COL_AI_VERDICT) {
       sheet.getRange(1, AT_COL_AI_VERDICT).setValue('ai verdict');
       sheet.setColumnWidth(AT_COL_AI_VERDICT, 260);
+    }
+    if (sheet.getLastColumn() < AT_COL_POLL_TWEET) {
+      sheet.getRange(1, AT_COL_POLL_TWEET).setValue('poll tweet');
+      sheet.setColumnWidth(AT_COL_POLL_TWEET, 350);
     }
   }
   return sheet;
@@ -84,10 +91,10 @@ function isArticleAlreadySeen(sheet, articleUrl) {
  * @param {string} tweetDraft
  * @returns {number}  1-based row index of the inserted row
  */
-function addPendingArticle(sheet, articleUrl, source, title, tweetDraft, category) {
+function addPendingArticle(sheet, articleUrl, source, title, tweetDraft, category, pollTweet) {
   var rowIndex = sheet.getLastRow() + 1;
   var now      = new Date().toISOString();
-  sheet.getRange(rowIndex, 1, 1, 9).setValues([[
+  sheet.getRange(rowIndex, 1, 1, 10).setValues([[
     articleUrl,
     source,
     title,
@@ -95,8 +102,9 @@ function addPendingArticle(sheet, articleUrl, source, title, tweetDraft, categor
     'pending',
     now,
     '',
-    category || '',
-    ''         // ai_verdict — empty until analyzed
+    category  || '',
+    '',              // ai_verdict — empty until analyzed
+    pollTweet || ''  // poll_tweet
   ]]);
   return rowIndex;
 }
@@ -110,7 +118,7 @@ function getPendingRows(sheet) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
 
-  var rows    = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
+  var rows    = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
   var pending = [];
 
   rows.forEach(function(row, i) {
@@ -125,6 +133,7 @@ function getPendingRows(sheet) {
         fetchedAt:  String(row[AT_COL_FETCHED_AT  - 1] || ''),
         category:   String(row[AT_COL_CATEGORY    - 1] || ''),
         aiVerdict:  String(row[AT_COL_AI_VERDICT  - 1] || ''),
+        pollTweet:  String(row[AT_COL_POLL_TWEET  - 1] || ''),
       });
     }
   });

@@ -135,7 +135,7 @@ function pollRssFeeds() {
     if (gen.error) {
       Logger.log('[RssFetcher] Groq error for "' + item.title + '": ' + gen.error + ' — skipping.');
     } else {
-      addPendingArticle(sheet, item.link, item.sourceName, item.title, gen.tweet, gen.category || '');
+      addPendingArticle(sheet, item.link, item.sourceName, item.title, gen.tweet, gen.category || '', gen.pollTweet || '');
       Logger.log('[RssFetcher] Queued [' + item.sourceName + '] desc:' + (item.description || '').length + 'ch: ' + item.title);
       queued++;
     }
@@ -396,15 +396,25 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
       '- Do NOT mention the news source or publication name\n' +
       '- DO use model names, product names, company names, and technical specs — they are the point\n\n' +
       'Also classify into one category: "AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
+      'Also generate a poll-style tweet based on the same article. Format:\n' +
+      '[One punchy question a developer would actually want to answer]\n\n' +
+      '- [Option 1]\n' +
+      '- [Option 2]\n' +
+      '- [Option 3]\n' +
+      '- [Option 4]\n\n' +
+      'Rules for the poll tweet:\n' +
+      '- Question must be something developers answer from their own experience, not trivia about the article\n' +
+      '- Options must be short, distinct, and cover the most common real-world answers\n' +
+      '- No URLs, no hashtags\n\n' +
       'Example JSON output:\n\n' +
-      '{"tweet": "ZooKeeper became our biggest bottleneck past 50 nodes — not the databases, not the services.\n\nEvery state change went through one place. Gossip protocol fixed this by letting nodes share state with neighbours directly. No central point. No single failure.\n\nIf you are building distributed systems, centralized state management will eventually hurt you.\n\nAnyone else hit this? What did you switch to?", "category": "Software Engineering"}\n\n' +
-      '{"tweet": "Anthropic stores customer prompts for 30+ days and throttles performance if it detects commercial use.\n\nThat is not a safety feature. That is vendor lock-in dressed up as policy.\n\nEvery AI dependency you ship without an off-ramp is a liability.", "category": "AI / ML"}\n\n' +
+      '{"tweet": "ZooKeeper became our biggest bottleneck past 50 nodes — not the databases, not the services.\n\nEvery state change went through one place. Gossip protocol fixed this by letting nodes share state with neighbours directly. No central point. No single failure.\n\nIf you are building distributed systems, centralized state management will eventually hurt you.\n\nAnyone else hit this? What did you switch to?", "poll_tweet": "What state management do you use in distributed systems?\n\n- ZooKeeper\n- etcd\n- Consul\n- Custom / none", "category": "Software Engineering"}\n\n' +
+      '{"tweet": "Anthropic stores customer prompts for 30+ days and throttles performance if it detects commercial use.\n\nThat is not a safety feature. That is vendor lock-in dressed up as policy.\n\nEvery AI dependency you ship without an off-ramp is a liability.", "poll_tweet": "How do you protect against AI vendor lock-in?\n\n- Abstract behind an interface\n- Use open source models\n- Multi-provider setup\n- Haven\'t thought about it", "category": "AI / ML"}\n\n' +
       'Article title: ' + title + '\n\n' +
       contextBlock;
   }
 
-  // Scale max_tokens with tweet length: ~4 chars per token + 200 buffer
-  var maxTokens = Math.max(320, Math.ceil(tweetLength / 4) + 200);
+  // Scale max_tokens: tweet + poll tweet both need space. Add 350 buffer.
+  var maxTokens = Math.max(500, Math.ceil(tweetLength / 4) + 350);
 
   var url     = 'https://api.groq.com/openai/v1/chat/completions';
   var payload = {
@@ -446,12 +456,13 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
       return { tweet: raw.trim().replace(/^["""''']+|["""''']+$/g, '').trim(), category: '' };
     }
 
-    var tweet    = String(parsed.tweet    || '').trim().replace(/^["""''']+|["""''']+$/g, '').trim();
-    var category = String(parsed.category || '').trim();
+    var tweet     = String(parsed.tweet     || '').trim().replace(/^["""''']+|["""''']+$/g, '').trim();
+    var category  = String(parsed.category  || '').trim();
+    var pollTweet = String(parsed.poll_tweet || '').trim().replace(/^["""''']+|["""''']+$/g, '').trim();
 
     if (!tweet) return { error: 'Empty tweet in Groq JSON response' };
 
-    return { tweet: tweet, category: category };
+    return { tweet: tweet, category: category, pollTweet: pollTweet };
 
   } catch (e) {
     return { error: 'Groq call failed: ' + e.message };
