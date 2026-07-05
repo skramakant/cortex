@@ -1672,6 +1672,17 @@ function initLoginForm() {
       // Per-card feedback
       '<div class="js-card-feedback hidden"></div>' +
 
+      // Poll tweet section (shown only when available)
+      (item.pollTweet ? (
+        '<div class="border border-blue-100 bg-blue-50 rounded-lg p-3">' +
+          '<div class="flex items-center justify-between mb-2">' +
+            '<span class="text-xs font-medium text-blue-700">Poll tweet</span>' +
+            '<button class="js-copy-poll text-xs font-medium text-blue-500 border border-blue-300 bg-white rounded-md px-2.5 py-1 hover:bg-blue-50 transition-colors">Copy</button>' +
+          '</div>' +
+          '<pre class="js-poll-text text-xs text-gray-700 whitespace-pre-wrap break-words font-sans"></pre>' +
+        '</div>'
+      ) : '') +
+
       // Action buttons
       '<div class="flex gap-2">' +
         '<button class="js-approve-btn flex-1 py-2 text-sm font-semibold text-white bg-green-500 rounded-md hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Approve &amp; Post</button>' +
@@ -1690,6 +1701,26 @@ function initLoginForm() {
       var catBadge = div.querySelector('.js-category-badge');
       catBadge.textContent = item.category;
       catBadge.classList.remove('hidden');
+    }
+
+    // Set poll tweet text safely
+    if (item.pollTweet) {
+      div.querySelector('.js-poll-text').textContent = item.pollTweet;
+      div.querySelector('.js-copy-poll').addEventListener('click', function() {
+        var btn = div.querySelector('.js-copy-poll');
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(item.pollTweet).then(function() {
+            btn.textContent = 'Copied!';
+            setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+          }).catch(function() {
+            var el = div.querySelector('.js-poll-text');
+            var range = document.createRange();
+            range.selectNodeContents(el);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+          });
+        }
+      });
     }
 
     // Show verdict reason if present
