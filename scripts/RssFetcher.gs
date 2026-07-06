@@ -383,18 +383,19 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
       'You are a tech industry insider — a senior engineer with 15 years of experience who has strong opinions and does not sugarcoat things.\n\n' +
       'Your audience is individual software engineers and developers — not CTOs, not managers, not executives. Write for the person writing code, not the person managing people.\n\n' +
       'Your job: write one tweet based on the article. Use this structure:\n\n' +
-      'Line 1: A hook — a surprising fact, a counterintuitive claim, or a real production problem. Make someone stop scrolling.\n' +
-      'Line 2: The context or why it matters — the detail that makes line 1 credible.\n' +
-      'Line 3: Your take or implication — sharp and specific, not vague.\n' +
-      'Optional Line 4: Only add a question if it flows naturally from the content — something a developer can genuinely answer from their own experience, like "Anyone else hit this?" or "What did you switch to?". Skip it entirely if it would feel forced or off-topic.\n\n' +
+      'Line 1: A hook — a surprising fact, a specific number, or a counterintuitive claim from the article. Make someone stop scrolling.\n' +
+      'Line 2: The context — the detail or mechanism that makes line 1 credible and interesting.\n' +
+      'Line 3: A specific insight or implication drawn directly from the article — something the reader did not know before. Not a vague moral. Not a generic statement about the industry. Something concrete.\n\n' +
       'Separate each line with a newline. Total length between 200 and ' + tweetLength + ' characters.\n\n' +
-      'Voice: confident, direct, sounds like a real person — not a news summary.\n\n' +
+      'Voice: confident, direct, informative — leave the reader feeling they learned something.\n\n' +
       'Hard rules:\n' +
+      '- No question at the end — no "Anyone else hit this?", no "What do you think?", nothing\n' +
       '- No URLs, no hashtags\n' +
       '- Do NOT start with "I just", "Just", "Breaking:", "Hot take:"\n' +
-      '- Do NOT use "what\'s next?", "thoughts?", "the future is here", "change is coming"\n' +
+      '- Do NOT use vague wrap-up phrases like "with great wealth comes great responsibility", "velocity without direction", "the future is here"\n' +
+      '- Do NOT copy or paraphrase phrases from the examples below — they are style guides, not templates\n' +
       '- Do NOT mention the news source or publication name\n' +
-      '- DO use model names, product names, company names, and technical specs — they are the point\n\n' +
+      '- DO use model names, product names, company names, and specific numbers from the article\n\n' +
       'Also classify into one category: "AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
       'Also generate a poll-style tweet based on the same article. Format:\n' +
       '[One punchy question a developer would actually want to answer]\n\n' +
@@ -407,8 +408,8 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
       '- Options must be short, distinct, and cover the most common real-world answers\n' +
       '- No URLs, no hashtags\n\n' +
       'Example JSON output:\n\n' +
-      '{"tweet": "ZooKeeper became our biggest bottleneck past 50 nodes — not the databases, not the services.\n\nEvery state change went through one place. Gossip protocol fixed this by letting nodes share state with neighbours directly. No central point. No single failure.\n\nIf you are building distributed systems, centralized state management will eventually hurt you.\n\nAnyone else hit this? What did you switch to?", "poll_tweet": "What state management do you use in distributed systems?\n\n- ZooKeeper\n- etcd\n- Consul\n- Custom / none", "category": "Software Engineering"}\n\n' +
-      '{"tweet": "Anthropic stores customer prompts for 30+ days and throttles performance if it detects commercial use.\n\nThat is not a safety feature. That is vendor lock-in dressed up as policy.\n\nEvery AI dependency you ship without an off-ramp is a liability.", "poll_tweet": "How do you protect against AI vendor lock-in?\n\n- Abstract behind an interface\n- Use open source models\n- Multi-provider setup\n- Haven\'t thought about it", "category": "AI / ML"}\n\n' +
+      '{"tweet": "ZooKeeper became the biggest bottleneck past 50 nodes — not the databases, not the services.\n\nEvery state change went through one place. One slow write could stall the entire cluster.\n\nGossip protocol eliminates the central point entirely — each node shares state with neighbours directly, so there is no single failure and no single bottleneck.", "poll_tweet": "What state management do you use in distributed systems?\n\n- ZooKeeper\n- etcd\n- Consul\n- Custom / none", "category": "Software Engineering"}\n\n' +
+      '{"tweet": "AI chip workers at Samsung and SK Hynix in South Korea are receiving bonuses of up to $476,000.\n\nSouth Korea supplies roughly 60% of the world\'s DRAM and NAND flash. The AI boom created demand for models, but it also created massive demand for the people who manufacture the hardware that runs them.\n\nThe wealth gap between hardware engineers and software engineers just got a lot more interesting.", "poll_tweet": "Which would you choose?\n\n- AI software engineer\n- AI chip/hardware engineer\n- Researcher\n- Undecided", "category": "Tech Industry"}\n\n' +
       'Article title: ' + title + '\n\n' +
       contextBlock;
   }
