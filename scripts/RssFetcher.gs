@@ -135,7 +135,7 @@ function pollRssFeeds() {
     if (gen.error) {
       Logger.log('[RssFetcher] Groq error for "' + item.title + '": ' + gen.error + ' — skipping.');
     } else {
-      addPendingArticle(sheet, item.link, item.sourceName, item.title, gen.tweet, gen.category || '', gen.pollTweet || '');
+      addPendingArticle(sheet, item.link, item.sourceName, item.title, gen.tweet, gen.category || '');
       Logger.log('[RssFetcher] Queued [' + item.sourceName + '] desc:' + (item.description || '').length + 'ch: ' + item.title);
       queued++;
     }
@@ -380,42 +380,25 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
       'Respond with valid JSON only: {"tweet": "...", "category": "..."}';
   } else {
     prompt =
-      'You are a tech industry insider — a senior engineer with 15 years of experience who has strong opinions and does not sugarcoat things.\n\n' +
-      'Your audience is individual software engineers and developers — not CTOs, not managers, not executives. Write for the person writing code, not the person managing people.\n\n' +
-      'Your job: write one tweet based on the article. Use this structure:\n\n' +
-      'Line 1: A hook — a surprising fact, a specific number, or a counterintuitive claim from the article. Make someone stop scrolling.\n' +
-      'Line 2: The context — the detail or mechanism that makes line 1 credible and interesting.\n' +
-      'Line 3: A specific insight or implication drawn directly from the article — something the reader did not know before. Not a vague moral. Not a generic statement about the industry. Something concrete.\n\n' +
-      'Separate each line with a newline. Total length between 200 and ' + tweetLength + ' characters.\n\n' +
-      'Voice: confident, direct, informative — leave the reader feeling they learned something.\n\n' +
-      'Hard rules:\n' +
-      '- No question at the end — no "Anyone else hit this?", no "What do you think?", nothing\n' +
-      '- No URLs, no hashtags\n' +
-      '- Do NOT start with "I just", "Just", "Breaking:", "Hot take:"\n' +
-      '- Do NOT use vague wrap-up phrases like "with great wealth comes great responsibility", "velocity without direction", "the future is here"\n' +
-      '- Do NOT copy or paraphrase phrases from the examples below — they are style guides, not templates\n' +
-      '- Do NOT mention the news source or publication name\n' +
-      '- DO use model names, product names, company names, and specific numbers from the article\n\n' +
+      'Extract the most important insight from this article and write a tweet for software engineers and developers.\n\n' +
+      'The tweet must be:\n' +
+      '- Full of insight — tell the reader something genuinely useful or surprising\n' +
+      '- Easy to read — plain language, short sentences, no jargon without explanation\n' +
+      '- Meaningful — after reading, the person should feel they learned something\n' +
+      '- Written like a human, without any AI flavor\n' +
+      '- Maximum ' + tweetLength + ' characters\n\n' +
+      'Rules:\n' +
+      '- No URLs, no hashtags, no questions at the end\n' +
+      '- Do not mention the publication or news source name\n' +
+      '- Use specific numbers, names, and facts from the article — they make it credible\n\n' +
       'Also classify into one category: "AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
-      'Also generate a poll-style tweet based on the same article. Format:\n' +
-      '[One punchy question a developer would actually want to answer]\n\n' +
-      '- [Option 1]\n' +
-      '- [Option 2]\n' +
-      '- [Option 3]\n' +
-      '- [Option 4]\n\n' +
-      'Rules for the poll tweet:\n' +
-      '- Question must be something developers answer from their own experience, not trivia about the article\n' +
-      '- Options must be short, distinct, and cover the most common real-world answers\n' +
-      '- No URLs, no hashtags\n\n' +
-      'Example JSON output:\n\n' +
-      '{"tweet": "ZooKeeper became the biggest bottleneck past 50 nodes — not the databases, not the services.\n\nEvery state change went through one place. One slow write could stall the entire cluster.\n\nGossip protocol eliminates the central point entirely — each node shares state with neighbours directly, so there is no single failure and no single bottleneck.", "poll_tweet": "What state management do you use in distributed systems?\n\n- ZooKeeper\n- etcd\n- Consul\n- Custom / none", "category": "Software Engineering"}\n\n' +
-      '{"tweet": "AI chip workers at Samsung and SK Hynix in South Korea are receiving bonuses of up to $476,000.\n\nSouth Korea supplies roughly 60% of the world\'s DRAM and NAND flash. The AI boom created demand for models, but it also created massive demand for the people who manufacture the hardware that runs them.\n\nThe wealth gap between hardware engineers and software engineers just got a lot more interesting.", "poll_tweet": "Which would you choose?\n\n- AI software engineer\n- AI chip/hardware engineer\n- Researcher\n- Undecided", "category": "Tech Industry"}\n\n' +
+      'Respond with valid JSON only: {"tweet": "...", "category": "..."}\n\n' +
       'Article title: ' + title + '\n\n' +
       contextBlock;
   }
 
-  // Scale max_tokens: tweet + poll tweet both need space. Add 350 buffer.
-  var maxTokens = Math.max(500, Math.ceil(tweetLength / 4) + 350);
+  // Scale max_tokens with tweet length: ~4 chars per token + 150 buffer
+  var maxTokens = Math.max(320, Math.ceil(tweetLength / 4) + 150);
 
   var url     = 'https://api.groq.com/openai/v1/chat/completions';
   var payload = {
@@ -457,13 +440,12 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
       return { tweet: raw.trim().replace(/^["""''']+|["""''']+$/g, '').trim(), category: '' };
     }
 
-    var tweet     = String(parsed.tweet     || '').trim().replace(/^["""''']+|["""''']+$/g, '').trim();
-    var category  = String(parsed.category  || '').trim();
-    var pollTweet = String(parsed.poll_tweet || '').trim().replace(/^["""''']+|["""''']+$/g, '').trim();
+    var tweet     = String(parsed.tweet    || '').trim().replace(/^["""''']+|["""''']+$/g, '').trim();
+    var category  = String(parsed.category || '').trim();
 
     if (!tweet) return { error: 'Empty tweet in Groq JSON response' };
 
-    return { tweet: tweet, category: category, pollTweet: pollTweet };
+    return { tweet: tweet, category: category };
 
   } catch (e) {
     return { error: 'Groq call failed: ' + e.message };
