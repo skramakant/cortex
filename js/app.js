@@ -664,17 +664,88 @@ function cronToHuman(cron) {
 // My Tweets tab
 // ============================================================
 
+/**
+ * Calculates the next fire timestamp (ms) for a 5-field cron expression.
+ * Uses parseCronToBuilder() to decode the expression, then computes
+ * the next occurrence relative to now.
+ * Returns Infinity if the cron is empty or unrecognised (sort to bottom).
+ * @param {string} cron
+ * @returns {number}  timestamp in ms
+ */
+function nextCronFire(cron) {
+  if (!cron || !cron.trim()) return Infinity;
+  var p   = parseCronToBuilder(cron);
+  var now = new Date();
+  var next;
+
+  switch (p.freq) {
+    case 'hourly': {
+      // Fires at :MM of every hour
+      next = new Date(now);
+      next.setSeconds(0, 0);
+      next.setMinutes(p.minute);
+      if (next <= now) next.setHours(next.getHours() + 1);
+      break;
+    }
+    case 'daily': {
+      next = new Date(now);
+      next.setSeconds(0, 0);
+      next.setMinutes(p.minute);
+      next.setHours(p.hour);
+      if (next <= now) next.setDate(next.getDate() + 1);
+      break;
+    }
+    case 'weekly': {
+      next = new Date(now);
+      next.setSeconds(0, 0);
+      next.setMinutes(p.minute);
+      next.setHours(p.hour);
+      var daysUntil = ((p.dow - now.getDay()) + 7) % 7;
+      if (daysUntil === 0 && next <= now) daysUntil = 7;
+      next.setDate(next.getDate() + daysUntil);
+      break;
+    }
+    case 'monthly': {
+      next = new Date(now);
+      next.setSeconds(0, 0);
+      next.setMinutes(p.minute);
+      next.setHours(p.hour);
+      next.setDate(p.dom);
+      if (next <= now) {
+        next.setMonth(next.getMonth() + 1);
+        next.setDate(p.dom);
+      }
+      break;
+    }
+    case 'custom': {
+      // Every N minutes
+      var ms   = p.interval * 60 * 1000;
+      var diff = ms - (now.getTime() % ms);
+      next = new Date(now.getTime() + diff);
+      break;
+    }
+    default:
+      return Infinity;
+  }
+  return next.getTime();
+}
+
 (function initViewTab() {
   var refreshBtn = document.getElementById('viewRefreshBtn');
+  var sortBtn    = document.getElementById('viewSortBtn');
   var loadingEl  = document.getElementById('viewLoading');
   var feedbackEl = document.getElementById('viewFeedback');
   var emptyEl    = document.getElementById('viewEmpty');
   var listEl     = document.getElementById('viewList');
 
+  var allTweets  = []; // kept for sort-without-reload
+
   // ---- Load & render ----------------------------------------
 
   function loadTweets() {
     refreshBtn.disabled = true;
+    sortBtn.textContent = 'Sort by trigger';
+    sortBtn.disabled    = false;
     loadingEl.classList.remove('hidden');
     listEl.classList.add('hidden');
     emptyEl.classList.add('hidden');
@@ -686,7 +757,8 @@ function cronToHuman(cron) {
           showFeedback(feedbackEl, result.error || 'Failed to load tweets.', 'error');
           return;
         }
-        renderList(result.tweets || []);
+        allTweets = result.tweets || [];
+        renderList(allTweets);
       })
       .catch(function(err) {
         showFeedback(feedbackEl, 'Unexpected error: ' + err.message, 'error');
@@ -708,6 +780,29 @@ function cronToHuman(cron) {
     });
     listEl.classList.remove('hidden');
   }
+
+  // Sort by next trigger time: active scheduled tweets first (soonest),
+  // then no-cron active tweets, then sent tweets at the bottom
+  sortBtn.addEventListener('click', function() {
+    if (allTweets.length === 0) return;
+    var sorted = allTweets.slice().sort(function(a, b) {
+      var aActive  = a.status !== 'sent' && a.status.indexOf('error:') !== 0;
+      var bActive  = b.status !== 'sent' && b.status.indexOf('error:') !== 0;
+      var aHasCron = !!(a.cron && a.cron.trim());
+      var bHasCron = !!(b.cron && b.cron.trim());
+
+      // sent / error → bottom
+      if (aActive !== bActive) return aActive ? -1 : 1;
+      // within active: scheduled before unscheduled
+      if (aHasCron !== bHasCron) return aHasCron ? -1 : 1;
+      // both scheduled: sort by next fire time ascending
+      if (aHasCron && bHasCron) return nextCronFire(a.cron) - nextCronFire(b.cron);
+      return 0;
+    });
+    renderList(sorted);
+    sortBtn.textContent = 'Sorted ✓';
+    sortBtn.disabled = true;
+  });
 
   // ---- Build one tweet card ----------------------------------
 
