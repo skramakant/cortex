@@ -380,17 +380,14 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
       'Respond with valid JSON only: {"tweet": "...", "category": "..."}';
   } else {
     prompt =
-      'Extract the most important insight from this article and write a tweet for software engineers and developers.\n\n' +
-      'The tweet must be:\n' +
-      '- Full of insight — tell the reader something genuinely useful or surprising\n' +
-      '- Easy to read — plain language, short sentences, no jargon without explanation\n' +
-      '- Meaningful — after reading, the person should feel they learned something\n' +
+      'Read this article carefully and extract a clear, insightful summary of what it is really about.\n\n' +
+      'Then present that summary in plain English, within ' + tweetLength + ' characters.\n\n' +
+      'The output should be:\n' +
+      '- Easy to read and understand for a software engineer\n' +
+      '- Insightful — capture what actually matters, not just the headline\n' +
       '- Written like a human, without any AI flavor\n' +
-      '- Maximum ' + tweetLength + ' characters\n\n' +
-      'Rules:\n' +
-      '- No URLs, no hashtags, no questions at the end\n' +
-      '- Do not mention the publication or news source name\n' +
-      '- Use specific numbers, names, and facts from the article — they make it credible\n\n' +
+      '- No URLs, no hashtags\n' +
+      '- Do not mention the publication or source name\n\n' +
       'Also classify into one category: "AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
       'Respond with valid JSON only: {"tweet": "...", "category": "..."}\n\n' +
       'Article title: ' + title + '\n\n' +
