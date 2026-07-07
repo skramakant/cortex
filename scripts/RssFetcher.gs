@@ -383,7 +383,9 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
       'Read this article carefully and extract a clear, insightful summary of what it is really about.\n\n' +
       'Then present that summary in plain English, within ' + tweetLength + ' characters.\n\n' +
       'The output should be:\n' +
-      '- Easy to read and understand for a software engineer\n' +
+      '- Easy to read and understand for a software engineer — but do not drop specific numbers, names, or key facts to achieve this. Those details are what make it worth reading.\n' +
+      '- Written in 2–3 short sentences, not one long run-on sentence.\n' +
+      '- If the article covers multiple topics, focus on the single most interesting one. Do not try to summarise everything.\n' +
       '- Insightful — capture what actually matters, not just the headline\n' +
       '- Written like a human, without any AI flavor\n' +
       '- No URLs, no hashtags\n' +
