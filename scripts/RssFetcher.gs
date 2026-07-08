@@ -379,21 +379,17 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
       'Also classify into one category: "AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
       'Respond with valid JSON only: {"tweet": "...", "category": "..."}';
   } else {
-    prompt =
-      'Read this article carefully and extract a clear, insightful summary of what it is really about.\n\n' +
-      'Then present that summary in plain English, within ' + tweetLength + ' characters.\n\n' +
-      'The output should be:\n' +
-      '- Easy to read and understand for a software engineer — but do not drop specific numbers, names, or key facts to achieve this. Those details are what make it worth reading.\n' +
-      '- Written in 2–3 short sentences, not one long run-on sentence.\n' +
-      '- If the article covers multiple topics, focus on the single most interesting one. Do not try to summarise everything.\n' +
-      '- Insightful — capture what actually matters, not just the headline\n' +
-      '- Written like a human, without any AI flavor\n' +
-      '- No URLs, no hashtags\n' +
-      '- Do not mention the publication or source name\n\n' +
-      'Also classify into one category: "AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
-      'Respond with valid JSON only: {"tweet": "...", "category": "..."}\n\n' +
-      'Article title: ' + title + '\n\n' +
-      contextBlock;
+    var promptSheet = getOrCreatePromptSheet();
+    var promptBase  = getActivePrompt(promptSheet, 'short_take', { tweet_length: tweetLength });
+    if (!promptBase) {
+      // Fallback if sheet is empty
+      promptBase =
+        'Read this article carefully and extract a clear, insightful summary of what it is really about.\n\n' +
+        'Then present that summary in plain English, within ' + tweetLength + ' characters.\n\n' +
+        'Also classify into one category: "AI / ML", "Software Engineering", "Tech Industry", "Startups & Business", "Privacy & Security", "Science", "Politics & Law", "History", "Other"\n\n' +
+        'Respond with valid JSON only: {"tweet": "...", "category": "..."}';
+    }
+    prompt = promptBase + '\n\nArticle title: ' + title + '\n\n' + contextBlock;
   }
 
   // Scale max_tokens with tweet length: ~4 chars per token + 150 buffer

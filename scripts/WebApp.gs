@@ -727,22 +727,16 @@ function _analyzeEngagementWithGroq(tweets) {
            'Draft: ' + t.tweetDraft;
   }).join('\n\n');
 
-  var prompt =
-    'You are a social media expert specializing in tech Twitter/X content for an audience of software engineers.\n\n' +
-    'Analyze these ' + tweets.length + ' pending tweet drafts and recommend whether to post each one.\n\n' +
-    'APPROVE if the tweet:\n' +
-    '- Has a strong hook that makes a developer stop scrolling\n' +
-    '- Is specific — uses real names, numbers, product names, or concrete facts\n' +
-    '- Is opinionated, educational, or surprising\n' +
-    '- Avoids clichéd endings ("left behind", "change is coming", "thoughts?")\n\n' +
-    'REJECT if the tweet:\n' +
-    '- Is generic or could apply to anything\n' +
-    '- Is about politics, entertainment, or history unrelated to tech\n' +
-    '- Has multiple "will be left behind" or fear-based endings\n' +
-    '- Is about a product release note nobody outside that product cares about\n\n' +
-    'Return valid JSON only (json object format). No markdown:\n' +
-    '{"results": [{"rowIndex": <number>, "decision": "approve", "score": <1-10>, "reason": "<one sentence why>"}]}\n\n' +
-    'Tweets:\n\n' + tweetList;
+  var promptSheet = getOrCreatePromptSheet();
+  var promptBase  = getActivePrompt(promptSheet, 'analyse', { tweet_count: tweets.length });
+  if (!promptBase) {
+    // Fallback if sheet is empty
+    promptBase =
+      'You are a social media expert specializing in tech Twitter/X content for an audience of software engineers.\n\n' +
+      'Analyze these ' + tweets.length + ' pending tweet drafts and recommend whether to post each one.\n\n' +
+      'Return valid JSON only: {"results": [{"rowIndex": <number>, "decision": "approve", "score": <1-10>, "reason": "<one sentence>"}]}';
+  }
+  var prompt = promptBase + '\n\nTweets:\n\n' + tweetList;
 
   var payload = {
     model:           'llama-3.3-70b-versatile',
