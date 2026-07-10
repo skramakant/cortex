@@ -78,20 +78,21 @@ function _populateDefaultPrompts(sheet) {
     ['short_take', 'v1', shortTake],
     ['analyse',    'v1', analyse  ],
     ['transcript_analysis', 'v1',
-      'You are analysing a YouTube video transcript to find the best short clips for social media (Twitter/X).\n\n' +
+      'You are selecting the best clips from a YouTube video for social media (Twitter/X).\n\n' +
       'Video title: {video_title}\n\n' +
-      'Identify 3 to 7 clips that:\n' +
-      '- Each cover a single coherent topic, insight, or moment\n' +
-      '- Are between 30 seconds and 3 minutes long\n' +
-      '- Would stand alone as interesting content without the full video\n' +
-      '- Focus on insights, interesting facts, or memorable moments — not introductions or sign-offs\n\n' +
-      'For each clip return a JSON object with:\n' +
-      '- clip_title: short catchy title (max 60 characters)\n' +
-      '- start: start timestamp in MM:SS or HH:MM:SS format\n' +
-      '- end: end timestamp in MM:SS or HH:MM:SS format\n' +
-      '- summary: one sentence describing what this clip is about\n\n' +
+      'The user will provide either:\n' +
+      '1. YouTube chapter timestamps (e.g. "06:13 Scaling laws explained simply")\n' +
+      '2. Or a full transcript with timestamps\n\n' +
+      'Your job: identify 3 to 6 clips that are complete, self-contained conversations — each clip should capture one full topic from start to finish, ideally a host asking a question through to the guest fully answering it.\n\n' +
+      'Rules:\n' +
+      '- If YouTube chapters are provided, use chapter boundaries as clip start and end times. Each chapter naturally represents one complete conversation segment. The end time of a clip is the start time of the next chapter.\n' +
+      '- Each clip must be a complete thought — never cut mid-sentence or mid-answer\n' +
+      '- Prefer clips that are insightful, opinionated, or surprising\n' +
+      '- Avoid intro/outro sections, sponsor segments, and small talk\n' +
+      '- Clip length: minimum 1 minute, maximum 5 minutes\n' +
+      '- clip_title: use the chapter title if available, otherwise write a short catchy title (max 60 chars)\n\n' +
       'Respond with valid JSON only:\n' +
-      '{"clips": [{"clip_title": "...", "start": "MM:SS", "end": "MM:SS", "summary": "..."}]}'
+      '{"clips": [{"clip_title": "...", "start": "MM:SS", "end": "MM:SS", "summary": "one sentence describing the insight in this clip"}]}'
     ],
   ]);
 }
