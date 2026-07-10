@@ -1,0 +1,45 @@
+name: Generate Video Clips
+
+on:
+  # Trigger manually from GitHub mobile app or web
+  workflow_dispatch:
+
+  # Optional: also run automatically every 6 hours
+  # Uncomment the lines below to enable scheduled runs
+  # schedule:
+  #   - cron: '0 */6 * * *'
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90   # clips can take time to download + encode
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies (ffmpeg + nodejs for yt-dlp)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg nodejs
+          node --version
+          ffmpeg -version | head -1
+
+      - name: Install Python dependencies
+        run: pip install -r local-tools/requirements.txt
+
+      - name: Generate clips
+        env:
+          GAS_URL:                ${{ secrets.GAS_URL }}
+          API_KEY:                ${{ secrets.API_KEY }}
+          DRIVE_FOLDER_ID:        ${{ secrets.DRIVE_FOLDER_ID }}
+          GOOGLE_CLIENT_ID:       ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET:   ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN:   ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          DEPLOYMENT_ENV:         github
+        run: python local-tools/generate_clips_local.py

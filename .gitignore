@@ -79,4 +79,5 @@ cloud-functions/clip-generator/clips/
 # YouTube cookies — never commit
 cloud-functions/clip-generator/cookies.txt
 cloud-functions
-local-tools
+local-tools/clips
+local-tools/get_token.py
