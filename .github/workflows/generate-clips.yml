@@ -33,13 +33,17 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r local-tools/requirements.txt
 
+      - name: Write YouTube cookies
+        run: echo "${{ secrets.YOUTUBE_COOKIES }}" > local-tools/cookies.txt
+
       - name: Generate clips
         env:
-          GAS_URL:                ${{ secrets.GAS_URL }}
-          API_KEY:                ${{ secrets.API_KEY }}
-          DRIVE_FOLDER_ID:        ${{ secrets.DRIVE_FOLDER_ID }}
-          GOOGLE_CLIENT_ID:       ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET:   ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_REFRESH_TOKEN:   ${{ secrets.GOOGLE_REFRESH_TOKEN }}
-          DEPLOYMENT_ENV:         github
+          GAS_URL:               ${{ secrets.GAS_URL }}
+          API_KEY:               ${{ secrets.API_KEY }}
+          DRIVE_FOLDER_ID:       ${{ secrets.DRIVE_FOLDER_ID }}
+          GOOGLE_CLIENT_ID:      ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET:  ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN:  ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          DEPLOYMENT_ENV:        github
+          COOKIES_FILE:          local-tools/cookies.txt
         run: python local-tools/generate_clips_local.py

@@ -153,8 +153,14 @@ def download_video(video_url, tmpdir):
         '--merge-output-format', 'mp4',
         '--output', out_template,
         '--no-playlist',
-        video_url,
     ]
+    # Use cookies file if available (needed for GitHub Actions cloud IPs)
+    cookies_file = os.environ.get('COOKIES_FILE', '')
+    if cookies_file and os.path.exists(cookies_file):
+        cmd += ['--cookies', cookies_file]
+        print(f'  Using cookies from: {cookies_file}')
+
+    cmd.append(video_url)
     print(f'  Downloading: {video_url}')
     result = subprocess.run(cmd, timeout=600)
     if result.returncode != 0:
