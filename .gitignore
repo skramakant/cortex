@@ -72,3 +72,11 @@ $RECYCLE.BIN/
 
 Tweet Scheduler - auto_tweets.csv
 Tweet Scheduler - rss_feeds.csv
+
+# Generated video clips (local testing)
+cloud-functions/clip-generator/clips/
+
+# YouTube cookies — never commit
+cloud-functions/clip-generator/cookies.txt
+cloud-functions
+local-tools

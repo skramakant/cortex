@@ -77,6 +77,16 @@ function doPost(e) {
       result = handleUpdateFeed(params);
     } else if (action === 'analyzeEngagement') {
       result = handleAnalyzeEngagement();
+    } else if (action === 'analyseTranscript') {
+      result = handleAnalyseTranscript(params);
+    } else if (action === 'saveClips') {
+      result = handleSaveClips(params);
+    } else if (action === 'listClips') {
+      result = handleListClips();
+    } else if (action === 'deleteClip') {
+      result = handleDeleteClip(params);
+    } else if (action === 'updateClipStatus') {
+      result = handleUpdateClipStatus(params);
     } else {
       result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -815,5 +825,120 @@ function handleUpdateFeed(params) {
     return { success: true, message: 'Feed updated.' };
   } catch (err) {
     return { success: false, error: 'Failed to update feed: ' + err.message };
+  }
+}
+
+// ============================================================
+// Short Clips handlers
+// ============================================================
+
+/**
+ * Calls Groq to analyse a transcript and return suggested clip timestamps.
+ * Does NOT write to the sheet — user reviews and selects before saving.
+ * @param {{ videoTitle: string, transcript: string }} params
+ */
+function handleAnalyseTranscript(params) {
+  try {
+    var videoTitle = String(params.videoTitle || '').trim();
+    var transcript = String(params.transcript || '').trim();
+    if (!transcript) {
+      return { success: false, error: 'Transcript is required.' };
+    }
+    var result = analyseTranscriptWithGroq(videoTitle || 'Untitled video', transcript);
+    if (result.error) {
+      return { success: false, error: result.error };
+    }
+    return { success: true, clips: result.clips };
+  } catch (err) {
+    return { success: false, error: 'Failed to analyse transcript: ' + err.message };
+  }
+}
+
+/**
+ * Saves selected clips to the clips sheet with status = 'pending'.
+ * @param {{ videoUrl: string, videoTitle: string, clips: Array }} params
+ */
+function handleSaveClips(params) {
+  try {
+    var videoUrl   = String(params.videoUrl   || '').trim();
+    var videoTitle = String(params.videoTitle || '').trim();
+    var clips      = params.clips;
+
+    if (!Array.isArray(clips) || clips.length === 0) {
+      return { success: false, error: 'No clips provided.' };
+    }
+
+    var sheet    = getOrCreateClipSheet();
+    var rowIndices = [];
+
+    clips.forEach(function(clip) {
+      var idx = addClipRow(
+        sheet,
+        videoUrl,
+        videoTitle,
+        String(clip.clipTitle || '').trim(),
+        String(clip.start     || '').trim(),
+        String(clip.end       || '').trim(),
+        String(clip.summary   || '').trim()
+      );
+      rowIndices.push(idx);
+    });
+
+    return { success: true, message: clips.length + ' clip(s) saved.', rowIndices: rowIndices };
+  } catch (err) {
+    return { success: false, error: 'Failed to save clips: ' + err.message };
+  }
+}
+
+/**
+/**
+ * Returns all rows from the clips sheet.
+ */
+function handleListClips() {
+  try {
+    var sheet = getOrCreateClipSheet();
+    var clips = getAllClips(sheet);
+    return { success: true, clips: clips };
+  } catch (err) {
+    return { success: false, error: 'Failed to list clips: ' + err.message };
+  }
+}
+
+/**
+ * Deletes a clip row.
+ * @param {{ rowIndex: number }} params
+ */
+function handleDeleteClip(params) {
+  try {
+    var rowIndex = Number(params.rowIndex);
+    if (!rowIndex || rowIndex < 2) {
+      return { success: false, error: 'Invalid row index.' };
+    }
+    var sheet = getOrCreateClipSheet();
+    deleteClipRow(sheet, rowIndex);
+    return { success: true, message: 'Clip deleted.' };
+  } catch (err) {
+    return { success: false, error: 'Failed to delete clip: ' + err.message };
+  }
+}
+
+/**
+ * Updates the status of a clip row — called by generate_clips_local.py.
+ * @param {{ rowIndex, status, driveLink, errorMsg }} params
+ */
+function handleUpdateClipStatus(params) {
+  try {
+    var rowIndex  = Number(params.rowIndex);
+    var status    = String(params.status    || '');
+    var driveLink = String(params.driveLink || '');
+    var errorMsg  = String(params.errorMsg  || '');
+    if (!rowIndex || rowIndex < 2) {
+      return { success: false, error: 'Invalid row index.' };
+    }
+    var sheet = getOrCreateClipSheet();
+    updateClipStatus(sheet, rowIndex, status, driveLink, '', errorMsg);
+    return { success: true, message: 'Status updated to: ' + status };
+  } catch (err) {
+    return { success: false, error: 'Failed to update clip status: ' + err.message };
   }
 }

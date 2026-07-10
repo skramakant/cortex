@@ -201,3 +201,42 @@ async function analyzeEngagement() {
 async function updateFeed(rowIndex, data) {
   return gasPost({ action: 'updateFeed', rowIndex: rowIndex, ...data });
 }
+
+/**
+ * Analyses a YouTube transcript with Groq and returns suggested clip timestamps.
+ * Does NOT save anything — user reviews before committing.
+ * @param {string} videoTitle
+ * @param {string} transcript
+ * @returns {Promise<{success: boolean, clips?: Array, error?: string}>}
+ */
+async function analyseTranscript(videoTitle, transcript) {
+  return gasPost({ action: 'analyseTranscript', videoTitle, transcript });
+}
+
+/**
+ * Saves selected clips to the clips sheet with status = 'pending'.
+ * @param {string} videoUrl
+ * @param {string} videoTitle
+ * @param {Array<{clipTitle, start, end, summary}>} clips
+ * @returns {Promise<{success: boolean, message?: string, rowIndices?: number[], error?: string}>}
+ */
+async function saveClips(videoUrl, videoTitle, clips) {
+  return gasPost({ action: 'saveClips', videoUrl, videoTitle, clips });
+}
+
+/**
+ * Returns all clips from the clips sheet.
+ * @returns {Promise<{success: boolean, clips?: Array, error?: string}>}
+ */
+async function listClips() {
+  return gasPost({ action: 'listClips' });
+}
+
+/**
+ * Deletes a clip row from the clips sheet.
+ * @param {number} rowIndex
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function deleteClip(rowIndex) {
+  return gasPost({ action: 'deleteClip', rowIndex });
+}

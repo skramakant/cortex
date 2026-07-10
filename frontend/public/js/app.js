@@ -15,6 +15,7 @@ function switchTab(tab) {
   document.getElementById('tabAuto').classList.toggle('hidden',   tab !== 'auto');
   document.getElementById('tabFeeds').classList.toggle('hidden',  tab !== 'feeds');
   document.getElementById('tabEngage').classList.toggle('hidden', tab !== 'engage');
+  document.getElementById('tabClips').classList.toggle('hidden',  tab !== 'clips');
 
   var tabMap = {
     'tabCloneBtn':  'clone',
@@ -23,6 +24,7 @@ function switchTab(tab) {
     'tabAutoBtn':   'auto',
     'tabEngageBtn': 'engage',
     'tabFeedsBtn':  'feeds',
+    'tabClipsBtn':  'clips',
   };
 
   Object.keys(tabMap).forEach(function(id) {
@@ -1500,6 +1502,239 @@ function nextCronFire(cron) {
 }());
 
 // ============================================================
+// Short Clips tab
+// ============================================================
+
+(function initClipsTab() {
+  var analyseBtn      = document.getElementById('clipsAnalyseBtn');
+  var analyseLoading  = document.getElementById('clipsAnalyseLoading');
+  var analyseFeedback = document.getElementById('clipsAnalyseFeedback');
+  var suggestionsEl   = document.getElementById('clipsSuggestions');
+  var suggestionList  = document.getElementById('clipsSuggestionList');
+  var saveSelectedBtn = document.getElementById('clipsSaveSelectedBtn');
+  var refreshBtn      = document.getElementById('clipsRefreshBtn');
+  var clipsFeedback   = document.getElementById('clipsFeedback');
+  var queueLoading    = document.getElementById('clipsQueueLoading');
+  var queueEmpty      = document.getElementById('clipsQueueEmpty');
+  var queueList       = document.getElementById('clipsQueueList');
+
+  var pendingSuggestions = []; // clips returned by Groq, not yet saved
+
+  // ── Analyse transcript ──────────────────────────────────────────────────
+
+  analyseBtn.addEventListener('click', function() {
+    var videoUrl   = document.getElementById('clipsVideoUrl').value.trim();
+    var videoTitle = document.getElementById('clipsVideoTitle').value.trim();
+    var transcript = document.getElementById('clipsTranscript').value.trim();
+
+    if (!transcript) {
+      showFeedback(analyseFeedback, 'Please paste the video transcript first.', 'error');
+      return;
+    }
+
+    analyseBtn.disabled = true;
+    analyseLoading.classList.remove('hidden');
+    suggestionsEl.classList.add('hidden');
+    hideFeedback(analyseFeedback);
+
+    analyseTranscript(videoTitle || 'Untitled video', transcript)
+      .then(function(result) {
+        if (!result.success) {
+          showFeedback(analyseFeedback, result.error || 'Analysis failed.', 'error');
+          return;
+        }
+        pendingSuggestions = result.clips || [];
+        renderSuggestions(pendingSuggestions, videoUrl);
+        suggestionsEl.classList.remove('hidden');
+      })
+      .catch(function(err) {
+        showFeedback(analyseFeedback, 'Unexpected error: ' + err.message, 'error');
+      })
+      .finally(function() {
+        analyseBtn.disabled = false;
+        analyseLoading.classList.add('hidden');
+      });
+  });
+
+  function renderSuggestions(clips, videoUrl) {
+    suggestionList.innerHTML = '';
+    clips.forEach(function(clip, idx) {
+      var div = document.createElement('div');
+      div.className = 'flex items-start gap-3 p-3 border border-gray-200 rounded-lg';
+      div.innerHTML =
+        '<input type="checkbox" class="js-clip-check mt-0.5 accent-blue-500" checked>' +
+        '<div class="flex-1 min-w-0">' +
+          '<p class="text-sm font-medium text-gray-800 js-clip-title"></p>' +
+          '<p class="text-xs text-gray-400 mt-0.5 js-clip-time"></p>' +
+          '<p class="text-xs text-gray-500 mt-1 js-clip-summary"></p>' +
+        '</div>';
+      div.querySelector('.js-clip-title').textContent  = clip.clipTitle || '(no title)';
+      div.querySelector('.js-clip-time').textContent   = clip.start + ' → ' + clip.end;
+      div.querySelector('.js-clip-summary').textContent = clip.summary || '';
+      div.dataset.idx = idx;
+      suggestionList.appendChild(div);
+    });
+  }
+
+  // ── Save selected clips to sheet ────────────────────────────────────────
+
+  saveSelectedBtn.addEventListener('click', function() {
+    var videoUrl   = document.getElementById('clipsVideoUrl').value.trim();
+    var videoTitle = document.getElementById('clipsVideoTitle').value.trim();
+
+    if (!videoUrl) {
+      showFeedback(analyseFeedback, 'Please enter the YouTube URL before saving.', 'error');
+      return;
+    }
+
+    var selected = [];
+    suggestionList.querySelectorAll('.js-clip-check').forEach(function(cb) {
+      if (cb.checked) {
+        var idx = Number(cb.closest('[data-idx]').dataset.idx);
+        if (pendingSuggestions[idx]) selected.push(pendingSuggestions[idx]);
+      }
+    });
+
+    if (selected.length === 0) {
+      showFeedback(analyseFeedback, 'Select at least one clip to save.', 'error');
+      return;
+    }
+
+    saveSelectedBtn.disabled = true;
+
+    saveClips(videoUrl, videoTitle || 'Untitled video', selected)
+      .then(function(result) {
+        if (result.success) {
+          showFeedback(analyseFeedback, result.message || selected.length + ' clip(s) saved.', 'success');
+          suggestionsEl.classList.add('hidden');
+          document.getElementById('clipsTranscript').value = '';
+          pendingSuggestions = [];
+          loadQueue();
+        } else {
+          showFeedback(analyseFeedback, result.error || 'Failed to save.', 'error');
+        }
+      })
+      .catch(function(err) {
+        showFeedback(analyseFeedback, 'Unexpected error: ' + err.message, 'error');
+      })
+      .finally(function() {
+        saveSelectedBtn.disabled = false;
+      });
+  });
+
+  // ── Clips queue ─────────────────────────────────────────────────────────
+
+  function loadQueue() {
+    refreshBtn.disabled = true;
+    queueLoading.classList.remove('hidden');
+    queueList.classList.add('hidden');
+    queueEmpty.classList.add('hidden');
+    hideFeedback(clipsFeedback);
+
+    listClips()
+      .then(function(result) {
+        if (!result.success) {
+          showFeedback(clipsFeedback, result.error || 'Failed to load clips.', 'error');
+          return;
+        }
+        renderQueue(result.clips || []);
+      })
+      .catch(function(err) {
+        showFeedback(clipsFeedback, 'Unexpected error: ' + err.message, 'error');
+      })
+      .finally(function() {
+        refreshBtn.disabled = false;
+        queueLoading.classList.add('hidden');
+      });
+  }
+
+  function renderQueue(clips) {
+    queueList.innerHTML = '';
+    if (clips.length === 0) {
+      queueEmpty.classList.remove('hidden');
+      return;
+    }
+
+    // Newest first
+    clips.slice().reverse().forEach(function(clip) {
+      queueList.appendChild(createQueueCard(clip));
+    });
+    queueList.classList.remove('hidden');
+  }
+
+  function createQueueCard(clip) {
+    var statusColors = {
+      pending:    'bg-gray-100 text-gray-600',
+      generating: 'bg-yellow-100 text-yellow-700',
+      ready:      'bg-green-100 text-green-700',
+      error:      'bg-red-100 text-red-700',
+    };
+    var badgeClass = statusColors[clip.status] || statusColors.pending;
+
+    var div = document.createElement('div');
+    div.className = 'border border-gray-200 rounded-lg p-4 space-y-2';
+    div.innerHTML =
+      '<div class="flex items-start justify-between gap-3">' +
+        '<div class="flex-1 min-w-0">' +
+          '<p class="js-clip-q-title text-sm font-medium text-gray-800 break-words"></p>' +
+          '<p class="text-xs text-gray-400 mt-0.5 js-clip-q-time"></p>' +
+          '<p class="text-xs text-gray-500 mt-1 js-clip-q-summary"></p>' +
+          (clip.errorMsg ? '<p class="text-xs text-red-500 mt-1 js-clip-q-err break-all"></p>' : '') +
+        '</div>' +
+        '<span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + badgeClass + '">' +
+          escapeHtml(clip.status) +
+        '</span>' +
+      '</div>' +
+      '<div class="flex gap-2">' +
+        (clip.status === 'ready' && clip.driveLink
+          ? '<a class="flex-1 py-1.5 text-xs font-semibold text-center text-green-700 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 transition-colors js-drive-link" target="_blank" rel="noopener noreferrer">Open in Drive</a>'
+          : '') +
+        (clip.status === 'generating'
+          ? '<p class="flex-1 text-xs text-center text-yellow-600 py-1.5">Processing… refresh in a minute</p>'
+          : '') +
+        (clip.status === 'pending'
+          ? '<p class="flex-1 text-xs text-center text-gray-400 py-1.5">Run generate_clips_local.py to process</p>'
+          : '') +
+        '<button class="js-delete-btn py-1.5 px-3 text-xs font-medium text-red-500 border border-red-200 rounded-md hover:bg-red-50 transition-colors">Delete</button>' +
+      '</div>' +
+      '<div class="js-card-fb hidden"></div>';
+
+    div.querySelector('.js-clip-q-title').textContent   = clip.clipTitle || '(no title)';
+    div.querySelector('.js-clip-q-time').textContent    = clip.start + ' → ' + clip.end + (clip.videoTitle ? '  ·  ' + clip.videoTitle : '');
+    div.querySelector('.js-clip-q-summary').textContent = clip.summary || '';
+    if (clip.errorMsg) div.querySelector('.js-clip-q-err').textContent = clip.errorMsg;
+    if (clip.driveLink) {
+      var link = div.querySelector('.js-drive-link');
+      if (link) link.href = clip.driveLink;
+    }
+
+    var cardFb = div.querySelector('.js-card-fb');
+
+    // Delete button
+    div.querySelector('.js-delete-btn').addEventListener('click', function() {
+      if (!confirm('Delete this clip? This cannot be undone.')) return;
+      deleteClip(clip.rowIndex)
+        .then(function(result) {
+          if (result.success) {
+            div.remove();
+            showFeedback(clipsFeedback, 'Clip deleted.', 'success');
+          } else {
+            showFeedback(clipsFeedback, result.error || 'Failed to delete.', 'error');
+          }
+        })
+        .catch(function(err) {
+          showFeedback(clipsFeedback, 'Unexpected error: ' + err.message, 'error');
+        });
+    });
+
+    return div;
+  }
+
+  refreshBtn.addEventListener('click', loadQueue);
+  window._loadClipsQueue = loadQueue;
+}());
+
+// ============================================================
 // Authentication — login screen + 24 h localStorage session
 // ============================================================
 
@@ -1951,6 +2186,10 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   document.getElementById('tabEngageBtn').addEventListener('click', function() {
     switchTab('engage');
+  });
+  document.getElementById('tabClipsBtn').addEventListener('click', function() {
+    switchTab('clips');
+    window._loadClipsQueue();
   });
 
   // Sidebar toggle (mobile)
