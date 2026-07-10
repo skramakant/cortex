@@ -113,6 +113,11 @@
             Feeds
           </button>
 
+          <button id="tabClipsBtn" class="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-lg text-left text-gray-600 hover:bg-gray-50 focus:outline-none">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Short Clips
+          </button>
+
         </nav>
       </aside>
 
@@ -680,6 +685,78 @@
 
         <!-- Results — injected by JS -->
         <div id="engageList" class="hidden space-y-4"></div>
+
+      </div>
+
+      <!-- ===== SHORT CLIPS TAB ===== -->
+      <div id="tabClips" class="hidden">
+
+        <!-- ── Section 1: Analyse new video ── -->
+        <div class="mb-6">
+          <h2 class="text-sm font-semibold text-gray-700 mb-3">Analyse video transcript</h2>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">YouTube URL</label>
+              <input type="url" id="clipsVideoUrl" placeholder="https://www.youtube.com/watch?v=..."
+                autocomplete="off"
+                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Video title <span class="font-normal text-gray-400">(optional — helps Groq suggest better titles)</span></label>
+              <input type="text" id="clipsVideoTitle" placeholder="e.g. How Netflix builds recommendation systems"
+                autocomplete="off"
+                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">
+                Transcript <span class="font-normal text-gray-400">(paste from YouTube: ⋮ → Open transcript → Copy)</span>
+              </label>
+              <textarea id="clipsTranscript" rows="6" placeholder="0:00 Welcome to the channel&#10;0:05 Today we're going to talk about..."
+                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-y focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent font-mono"></textarea>
+            </div>
+            <button id="clipsAnalyseBtn"
+              class="w-full py-2.5 text-sm font-semibold text-white bg-blue-500 rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors">
+              Analyse with Groq
+            </button>
+          </div>
+
+          <p id="clipsAnalyseLoading" class="hidden mt-3 text-sm text-gray-500 text-center">Analysing transcript…</p>
+          <div id="clipsAnalyseFeedback" class="hidden mt-3"></div>
+
+          <!-- Suggested clips (shown after analysis) -->
+          <div id="clipsSuggestions" class="hidden mt-4">
+            <div class="flex items-center justify-between mb-2">
+              <p class="text-xs font-medium text-gray-600">Suggested clips — select and save to queue</p>
+              <button id="clipsSaveSelectedBtn"
+                class="px-3 py-1.5 text-xs font-semibold text-white bg-green-500 rounded-md hover:bg-green-600 disabled:opacity-50 transition-colors">
+                Save selected
+              </button>
+            </div>
+            <div id="clipsSuggestionList" class="space-y-2"></div>
+          </div>
+        </div>
+
+        <hr class="border-gray-100 mb-5">
+
+        <!-- ── Section 2: Clips queue ── -->
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-gray-700">Clips queue</h2>
+          <button id="clipsRefreshBtn"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-500 border border-blue-300 rounded-md hover:bg-blue-50 disabled:opacity-50 transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Refresh
+          </button>
+        </div>
+
+        <div id="clipsFeedback" class="hidden mb-3"></div>
+        <p id="clipsQueueLoading" class="hidden text-sm text-gray-500 text-center py-6">Loading clips…</p>
+        <div id="clipsQueueEmpty" class="hidden text-center py-8">
+          <p class="text-sm text-gray-400">No clips yet. Analyse a video above to get started.</p>
+        </div>
+        <div id="clipsQueueList" class="hidden space-y-3"></div>
 
       </div>
 

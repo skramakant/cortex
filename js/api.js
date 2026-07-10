@@ -1,13 +1,13 @@
 /**
  * api.js — All GAS API calls.
- * https://script.google.com/macros/s/AKfycbxlpoM6qGsJ2UXf9BA4imUtwvwIJmL1YRF6VsZkwwfW-AhR4_BZayYevlY8WlVL3Adgbg/exec and 6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259 are replaced at build time by inject-env.js.
+ * https://script.google.com/macros/s/AKfycbx74hfHk334Q7lZvjw8i553D47eOGPUgxJJZuZeoBOK6j7KvxAMoGGcLhgFZpd3_qycCg/exec and 6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259 are replaced at build time by inject-env.js.
  * GAS_URL and API_KEY are stored as GitHub Secrets and injected by GitHub Actions.
  *
  * CORS note: Content-Type: text/plain is a "simple request" — no preflight.
  * GAS receives the raw body in e.postData.contents and we JSON.parse it there.
  */
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxlpoM6qGsJ2UXf9BA4imUtwvwIJmL1YRF6VsZkwwfW-AhR4_BZayYevlY8WlVL3Adgbg/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbx74hfHk334Q7lZvjw8i553D47eOGPUgxJJZuZeoBOK6j7KvxAMoGGcLhgFZpd3_qycCg/exec';
 const API_KEY = '6237dcaf6cff0628deb88e76c9b22331dd525096ea394218cb4ddf54f9c6d259';
 
 /**
@@ -200,4 +200,43 @@ async function analyzeEngagement() {
  */
 async function updateFeed(rowIndex, data) {
   return gasPost({ action: 'updateFeed', rowIndex: rowIndex, ...data });
+}
+
+/**
+ * Analyses a YouTube transcript with Groq and returns suggested clip timestamps.
+ * Does NOT save anything — user reviews before committing.
+ * @param {string} videoTitle
+ * @param {string} transcript
+ * @returns {Promise<{success: boolean, clips?: Array, error?: string}>}
+ */
+async function analyseTranscript(videoTitle, transcript) {
+  return gasPost({ action: 'analyseTranscript', videoTitle, transcript });
+}
+
+/**
+ * Saves selected clips to the clips sheet with status = 'pending'.
+ * @param {string} videoUrl
+ * @param {string} videoTitle
+ * @param {Array<{clipTitle, start, end, summary}>} clips
+ * @returns {Promise<{success: boolean, message?: string, rowIndices?: number[], error?: string}>}
+ */
+async function saveClips(videoUrl, videoTitle, clips) {
+  return gasPost({ action: 'saveClips', videoUrl, videoTitle, clips });
+}
+
+/**
+ * Returns all clips from the clips sheet.
+ * @returns {Promise<{success: boolean, clips?: Array, error?: string}>}
+ */
+async function listClips() {
+  return gasPost({ action: 'listClips' });
+}
+
+/**
+ * Deletes a clip row from the clips sheet.
+ * @param {number} rowIndex
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function deleteClip(rowIndex) {
+  return gasPost({ action: 'deleteClip', rowIndex });
 }
