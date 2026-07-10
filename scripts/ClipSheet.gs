@@ -83,6 +83,9 @@ function addClipRow(sheet, videoUrl, videoTitle, clipTitle, start, end, summary)
     '', '', new Date().toISOString(),
     summary || '', ''
   ]]);
+  // Force start/end columns to text so Sheets doesn't convert "1:10:00" to a date
+  sheet.getRange(rowIndex, CL_COL_START).setNumberFormat('@');
+  sheet.getRange(rowIndex, CL_COL_END).setNumberFormat('@');
   return rowIndex;
 }
 

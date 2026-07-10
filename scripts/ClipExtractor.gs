@@ -24,22 +24,28 @@ function analyseTranscriptWithGroq(videoTitle, transcript) {
     ? transcript.substring(0, 12000) + '\n\n[transcript truncated]'
     : transcript;
 
-  var prompt =
-    'You are analysing a YouTube video transcript to find the best short clips for social media (Twitter/X).\n\n' +
-    'Video title: ' + videoTitle + '\n\n' +
-    'Identify 3 to 7 clips that:\n' +
-    '- Each cover a single coherent topic, insight, or moment\n' +
-    '- Are between 30 seconds and 3 minutes long\n' +
-    '- Would stand alone as interesting content without the full video\n' +
-    '- Focus on insights, interesting facts, or memorable moments — not introductions or sign-offs\n\n' +
-    'For each clip return a JSON object with:\n' +
-    '- clip_title: short catchy title (max 60 characters)\n' +
-    '- start: start timestamp in MM:SS or HH:MM:SS format\n' +
-    '- end: end timestamp in MM:SS or HH:MM:SS format\n' +
-    '- summary: one sentence describing what this clip is about\n\n' +
-    'Respond with valid JSON only:\n' +
-    '{"clips": [{"clip_title": "...", "start": "MM:SS", "end": "MM:SS", "summary": "..."}]}\n\n' +
-    'Transcript:\n' + truncated;
+  // Read prompt from the prompts sheet; fall back to hardcoded if not found
+  var promptSheet = getOrCreatePromptSheet();
+  var promptBase  = getActivePrompt(promptSheet, 'transcript_analysis', { video_title: videoTitle });
+  if (!promptBase) {
+    promptBase =
+      'You are analysing a YouTube video transcript to find the best short clips for social media (Twitter/X).\n\n' +
+      'Video title: ' + videoTitle + '\n\n' +
+      'Identify 3 to 7 clips that:\n' +
+      '- Each cover a single coherent topic, insight, or moment\n' +
+      '- Are between 30 seconds and 3 minutes long\n' +
+      '- Would stand alone as interesting content without the full video\n' +
+      '- Focus on insights, interesting facts, or memorable moments — not introductions or sign-offs\n\n' +
+      'For each clip return a JSON object with:\n' +
+      '- clip_title: short catchy title (max 60 characters)\n' +
+      '- start: start timestamp in MM:SS or HH:MM:SS format\n' +
+      '- end: end timestamp in MM:SS or HH:MM:SS format\n' +
+      '- summary: one sentence describing what this clip is about\n\n' +
+      'Respond with valid JSON only:\n' +
+      '{"clips": [{"clip_title": "...", "start": "MM:SS", "end": "MM:SS", "summary": "..."}]}';
+  }
+
+  var prompt = promptBase + '\n\nTranscript:\n' + truncated;
 
   var payload = {
     model:           'llama-3.3-70b-versatile',
