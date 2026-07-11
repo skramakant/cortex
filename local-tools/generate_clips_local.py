@@ -65,7 +65,6 @@ def upload_to_drive(file_path, file_name):
         fileId=file_id, body={'type': 'anyone', 'role': 'reader'}
     ).execute()
     return uploaded.get('webViewLink', '')
-from pathlib import Path
 
 
 def normalize_timestamp(ts):
@@ -100,7 +99,6 @@ def timestamp_to_seconds(ts):
     except ValueError:
         return 0.0
 
-import requests
 
 # ── Config ─────────────────────────────────────────────────────────────────
 
@@ -154,11 +152,11 @@ def download_video(video_url, tmpdir):
         '--output', out_template,
         '--no-playlist',
     ]
-    # Use cookies file if available (needed for GitHub Actions cloud IPs)
+
     cookies_file = os.environ.get('COOKIES_FILE', '')
-    if cookies_file and os.path.exists(cookies_file):
+    if DEPLOY_ENV == 'github' and cookies_file and os.path.exists(cookies_file):
         cmd += ['--cookies', cookies_file]
-        print(f'  Using cookies from: {cookies_file}')
+        print(f'  Using cookies file: {cookies_file}')
 
     cmd.append(video_url)
     print(f'  Downloading: {video_url}')
