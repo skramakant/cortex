@@ -86,7 +86,19 @@ function analyseTranscriptWithGroq(videoTitle, transcript) {
       return { error: 'Groq returned no clips. Try a longer or more structured transcript.' };
     }
 
-    // Normalise and validate each clip
+    // ── Sort by start time and compute end times in code ──────────────────
+    clips.sort(function(a, b) {
+      return _tsToSecs(String(a.start || '0')) - _tsToSecs(String(b.start || '0'));
+    });
+
+    for (var i = 0; i < clips.length; i++) {
+      if (i < clips.length - 1) {
+        clips[i].end = clips[i + 1].start;             // end = next clip's start
+      } else {
+        clips[i].end = _secsToTs(_tsToSecs(String(clips[i].start)) + 300); // last clip +5 min
+      }
+    }
+
     var valid = clips.filter(function(c) {
       return c.clip_title && c.start && c.end;
     }).map(function(c) {
@@ -103,4 +115,31 @@ function analyseTranscriptWithGroq(videoTitle, transcript) {
   } catch (e) {
     return { error: 'Groq call failed: ' + e.message };
   }
+}
+
+/**
+ * Converts a timestamp string (MM:SS or HH:MM:SS) to total seconds.
+ * @param {string} ts
+ * @returns {number}
+ */
+function _tsToSecs(ts) {
+  var parts = String(ts).trim().split(':').map(Number);
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return Number(parts[0]) || 0;
+}
+
+/**
+ * Converts total seconds to MM:SS or HH:MM:SS string.
+ * @param {number} secs
+ * @returns {string}
+ */
+function _secsToTs(secs) {
+  secs = Math.max(0, Math.floor(secs));
+  var h = Math.floor(secs / 3600);
+  var m = Math.floor((secs % 3600) / 60);
+  var s = secs % 60;
+  var mm = (m < 10 ? '0' : '') + m;
+  var ss = (s < 10 ? '0' : '') + s;
+  return h > 0 ? h + ':' + mm + ':' + ss : m + ':' + ss;
 }
