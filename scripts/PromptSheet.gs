@@ -18,7 +18,7 @@ var PS_COL_PROMPT  = 3;
 var PS_COL_MODEL   = 4;
 
 /** Default model used when the sheet row has no model specified. */
-var PS_DEFAULT_MODEL = 'qwen/qwen3.6-27b';
+var PS_DEFAULT_MODEL = 'openai/gpt-oss-120b';
 
 // ============================================================
 // Sheet bootstrap
