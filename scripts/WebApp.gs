@@ -759,7 +759,7 @@ function _analyzeEngagementWithGroq(tweets) {
   var prompt = promptBase + '\n\nTweets:\n\n' + tweetList;
 
   var payload = {
-    model:           'llama-3.3-70b-versatile',
+    model:           'qwen/qwen3.6-27b',
     messages:        [{ role: 'user', content: prompt }],
     max_tokens:      1000,
     temperature:     0.2,

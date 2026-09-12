@@ -397,7 +397,7 @@ function generateTweetWithGemini(title, articleText, tweetLength, promptStyle) {
 
   var url     = 'https://api.groq.com/openai/v1/chat/completions';
   var payload = {
-    model:           'llama-3.3-70b-versatile',
+    model:           'qwen/qwen3.6-27b',
     messages:        [{ role: 'user', content: prompt }],
     max_tokens:      maxTokens,
     temperature:     0.85,
