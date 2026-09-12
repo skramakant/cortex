@@ -3,9 +3,10 @@
  * Manages the "prompts" sheet tab.
  *
  * Columns:
- *   A  type     — "short_take" | "educational" | "analyse" | "transcript_analysis"
+ *   A  type     — prompt type key, e.g. "short_take", "educational", "analyse", "transcript_analysis"
  *   B  version  — "v1", "v2", etc. Latest version per type is used.
  *   C  prompt   — prompt text. Supports placeholders: {tweet_length}, {tweet_count}, {video_title}
+ *   D  model    — Groq model ID, e.g. "qwen/qwen3.6-27b" (falls back to PS_DEFAULT_MODEL if blank)
  *
  * To update a prompt: add a new row with the same type and a higher version.
  * The poller and analyser will automatically pick up the latest version.
@@ -14,6 +15,10 @@
 var PS_COL_TYPE    = 1;
 var PS_COL_VERSION = 2;
 var PS_COL_PROMPT  = 3;
+var PS_COL_MODEL   = 4;
+
+/** Default model used when the sheet row has no model specified. */
+var PS_DEFAULT_MODEL = 'qwen/qwen3.6-27b';
 
 // ============================================================
 // Sheet bootstrap
@@ -24,11 +29,12 @@ function getOrCreatePromptSheet() {
   var sheet = ss.getSheetByName('prompts');
   if (!sheet) {
     sheet = ss.insertSheet('prompts');
-    sheet.getRange(1, 1, 1, 3).setValues([['type', 'version', 'prompt']]);
+    sheet.getRange(1, 1, 1, 4).setValues([['type', 'version', 'prompt', 'model']]);
     sheet.setFrozenRows(1);
     sheet.setColumnWidth(PS_COL_TYPE,     120);
     sheet.setColumnWidth(PS_COL_VERSION,   80);
     sheet.setColumnWidth(PS_COL_PROMPT,   700);
+    sheet.setColumnWidth(PS_COL_MODEL,    200);
     sheet.getRange('C:C').setWrap(true);
     _populateDefaultPrompts(sheet);
   }
@@ -115,11 +121,11 @@ function _buildTranscriptAnalysis() {
 }
 
 function _populateDefaultPrompts(sheet) {
-  sheet.getRange(2, 1, 4, 3).setValues([
-    ['short_take',          'v1', _buildShortTake()          ],
-    ['educational',         'v1', _buildEducational()        ],
-    ['analyse',             'v1', _buildAnalyse()            ],
-    ['transcript_analysis', 'v1', _buildTranscriptAnalysis() ],
+  sheet.getRange(2, 1, 4, 4).setValues([
+    ['short_take',          'v1', _buildShortTake(),          PS_DEFAULT_MODEL],
+    ['educational',         'v1', _buildEducational(),        PS_DEFAULT_MODEL],
+    ['analyse',             'v1', _buildAnalyse(),            PS_DEFAULT_MODEL],
+    ['transcript_analysis', 'v1', _buildTranscriptAnalysis(), PS_DEFAULT_MODEL],
   ]);
 }
 
@@ -127,11 +133,19 @@ function _populateDefaultPrompts(sheet) {
 // Read helper
 // ============================================================
 
+/**
+ * Returns the latest active prompt and model for the given type.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {string} type
+ * @param {Object} [vars]  — placeholder substitutions, e.g. { tweet_length: 280 }
+ * @returns {{ prompt: string, model: string } | null}  null when no row matches
+ */
 function getActivePrompt(sheet, type, vars) {
   var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return '';
+  if (lastRow < 2) return null;
 
-  var rows = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  var rows = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
 
   var matching = rows.filter(function(row) {
     return String(row[PS_COL_TYPE - 1]).trim().toLowerCase() === type.toLowerCase().trim();
@@ -139,7 +153,7 @@ function getActivePrompt(sheet, type, vars) {
 
   if (matching.length === 0) {
     Logger.log('[PromptSheet] No prompt found for type: ' + type);
-    return '';
+    return null;
   }
 
   matching.sort(function(a, b) {
@@ -149,6 +163,7 @@ function getActivePrompt(sheet, type, vars) {
   });
 
   var prompt = String(matching[0][PS_COL_PROMPT - 1] || '');
+  var model  = String(matching[0][PS_COL_MODEL  - 1] || '').trim() || PS_DEFAULT_MODEL;
 
   if (vars) {
     Object.keys(vars).forEach(function(key) {
@@ -156,7 +171,7 @@ function getActivePrompt(sheet, type, vars) {
     });
   }
 
-  return prompt;
+  return { prompt: prompt, model: model };
 }
 
 // ============================================================
@@ -187,7 +202,7 @@ function addMissingPrompts() {
   var toAdd = [];
   Object.keys(defaults).forEach(function(type) {
     if (existingTypes.indexOf(type) === -1) {
-      toAdd.push([type, 'v1', defaults[type]]);
+      toAdd.push([type, 'v1', defaults[type], PS_DEFAULT_MODEL]);
       Logger.log('Adding: ' + type);
     } else {
       Logger.log('Already exists: ' + type);
@@ -196,7 +211,7 @@ function addMissingPrompts() {
 
   if (toAdd.length > 0) {
     var nextRow = sheet.getLastRow() + 1;
-    sheet.getRange(nextRow, 1, toAdd.length, 3).setValues(toAdd);
+    sheet.getRange(nextRow, 1, toAdd.length, 4).setValues(toAdd);
     Logger.log('Done. Added ' + toAdd.length + ' prompt(s).');
   } else {
     Logger.log('Nothing to add — all prompts already present.');

@@ -12,7 +12,7 @@
  *   F  max_new            — max articles to queue per run for this feed (default 1)
  *   G  fetch_full_article — TRUE / FALSE — fetch full article HTML for richer context
  *   H  tweet_length       — max characters for the generated tweet (default 280)
- *   I  prompt_style       — "short_take" | "educational" (default "short_take")
+ *   I  prompt_style       — prompt type key matching a row in the "prompts" tab (e.g. "short_take", "educational", "short_take_v3")
  */
 
 var FS_COL_NAME               = 1;
@@ -155,7 +155,7 @@ function getAllFeeds(sheet) {
       maxNew:            (!isNaN(maxNew)      && maxNew      >= 1)   ? maxNew      : 1,
       fetchFullArticle:  _isTruthy(row[FS_COL_FETCH_FULL_ARTICLE - 1]),
       tweetLength:       (!isNaN(tweetLength) && tweetLength >= 100) ? tweetLength : 280,
-      promptStyle:       (style === 'educational') ? 'educational' : 'short_take',
+      promptStyle:       style || 'short_take',
     };
   });
 }

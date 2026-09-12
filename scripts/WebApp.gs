@@ -748,18 +748,15 @@ function _analyzeEngagementWithGroq(tweets) {
   }).join('\n\n');
 
   var promptSheet = getOrCreatePromptSheet();
-  var promptBase  = getActivePrompt(promptSheet, 'analyse', { tweet_count: tweets.length });
-  if (!promptBase) {
-    // Fallback if sheet is empty
-    promptBase =
-      'You are a social media expert specializing in tech Twitter/X content for an audience of software engineers.\n\n' +
-      'Analyze these ' + tweets.length + ' pending tweet drafts and recommend whether to post each one.\n\n' +
-      'Return valid JSON only: {"results": [{"rowIndex": <number>, "decision": "approve", "score": <1-10>, "reason": "<one sentence>"}]}';
+  var sheetResult = getActivePrompt(promptSheet, 'analyse', { tweet_count: tweets.length });
+  if (!sheetResult) {
+    return { error: 'No prompt found for type "analyse" in the prompts sheet.' };
   }
-  var prompt = promptBase + '\n\nTweets:\n\n' + tweetList;
+  var prompt    = sheetResult.prompt + '\n\nTweets:\n\n' + tweetList;
+  var groqModel = sheetResult.model;
 
   var payload = {
-    model:           'qwen/qwen3.6-27b',
+    model:           groqModel,
     messages:        [{ role: 'user', content: prompt }],
     max_tokens:      1000,
     temperature:     0.2,
